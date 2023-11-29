@@ -257,6 +257,7 @@ import org.telegram.ui.Components.LinkSpanDrawable;
 import org.telegram.ui.Components.MentionsContainerView;
 import org.telegram.ui.Components.MessageBackgroundDrawable;
 import org.telegram.ui.Components.MessageContainsEmojiButton;
+import org.telegram.ui.Components.MessageDeletionOverlay;
 import org.telegram.ui.Components.MessagePreviewView;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.NumberTextView;
@@ -901,6 +902,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
 
     private ChatMessageCell dummyMessageCell;
     private FireworksOverlay fireworksOverlay;
+    private MessageDeletionOverlay messageDeletionOverlay;
 
     private boolean swipeBackEnabled = true;
 
@@ -7317,6 +7319,8 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             }
         };
         actionBar.setDrawBlurBackground(contentView);
+
+        contentView.addView(messageDeletionOverlay = new MessageDeletionOverlay(context), LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
         if (isTopic) {
             reactionsMentionCount = forumTopic.unread_reactions_count;
@@ -29829,14 +29833,15 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         }
 
         public void animateRowDeletionForMessageObject(MessageObject messageObject) {
-            Log.w("DELETION_TEST", messageObject.messageText.toString());
+            Log.i(MessageDeletionOverlay.TAG, messageObject.messageText.toString());
             int count = chatListView.getChildCount();
             for (int a = 0; a < count; a++) {
                 View child = chatListView.getChildAt(a);
                 if (child instanceof ChatMessageCell) {
                     ChatMessageCell cell = (ChatMessageCell) child;
                     if (cell.getMessageObject() == messageObject) {
-                        Log.w("DELETION_TEST", cell.toString());
+                        Log.i(MessageDeletionOverlay.TAG, cell.toString());
+                        messageDeletionOverlay.launchAnimation(cell);
                         return;
                     }
                 }
