@@ -20706,6 +20706,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         for (int a = 0; a < size; a++) {
             Integer mid = markAsDeletedMessages.get(a);
             MessageObject obj = messagesDict[loadIndex].get(mid);
+            chatAdapter.animateRowDeletionForMessageObject(obj);
             if (selectedObject != null && obj == selectedObject || obj != null && selectedObjectGroup != null && selectedObjectGroup == groupedMessagesMap.get(obj.getGroupId())) {
                 closeMenu();
             }
@@ -29824,6 +29825,21 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             notifyItemChanged(index);
             if (lastVisibleItem != RecyclerView.NO_POSITION) {
                 chatLayoutManager.scrollToPositionWithOffset(lastVisibleItem, top);
+            }
+        }
+
+        public void animateRowDeletionForMessageObject(MessageObject messageObject) {
+            Log.w("DELETION_TEST", messageObject.messageText.toString());
+            int count = chatListView.getChildCount();
+            for (int a = 0; a < count; a++) {
+                View child = chatListView.getChildAt(a);
+                if (child instanceof ChatMessageCell) {
+                    ChatMessageCell cell = (ChatMessageCell) child;
+                    if (cell.getMessageObject() == messageObject) {
+                        Log.w("DELETION_TEST", cell.toString());
+                        return;
+                    }
+                }
             }
         }
 
