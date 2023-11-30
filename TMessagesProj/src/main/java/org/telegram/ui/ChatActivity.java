@@ -20706,11 +20706,20 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             }
         }
 
+        final List<MessageObject> messageObjects = new ArrayList<>(markAsDeletedMessages.size());
+        for (int i = 0; i < size; i++) {
+            Integer mid = markAsDeletedMessages.get(i);
+            MessageObject obj = messagesDict[loadIndex].get(mid);
+            if (obj != null) {
+                messageObjects.add(obj);
+            }
+        }
+        chatAdapter.animateDeletionForMessageObjects(messageObjects);
+
         int commentsDeleted = 0;
         for (int a = 0; a < size; a++) {
             Integer mid = markAsDeletedMessages.get(a);
             MessageObject obj = messagesDict[loadIndex].get(mid);
-            chatAdapter.animateRowDeletionForMessageObject(obj);
             if (selectedObject != null && obj == selectedObject || obj != null && selectedObjectGroup != null && selectedObjectGroup == groupedMessagesMap.get(obj.getGroupId())) {
                 closeMenu();
             }
@@ -29832,20 +29841,23 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             }
         }
 
-        public void animateRowDeletionForMessageObject(MessageObject messageObject) {
-            Log.i(MessageDeletionOverlay.TAG, messageObject.messageText.toString());
+        public void animateDeletionForMessageObjects(List<MessageObject> messageObjects) {
             int count = chatListView.getChildCount();
-            for (int a = 0; a < count; a++) {
-                View child = chatListView.getChildAt(a);
-                if (child instanceof ChatMessageCell) {
-                    ChatMessageCell cell = (ChatMessageCell) child;
-                    if (cell.getMessageObject() == messageObject) {
-                        Log.i(MessageDeletionOverlay.TAG, cell.toString());
-                        messageDeletionOverlay.launchAnimation(cell);
-                        return;
+            List<View> views = new ArrayList<>(messageObjects.size());
+            for (MessageObject messageObject : messageObjects) {
+                for (int i = 0; i < count; i++) {
+                    View child = chatListView.getChildAt(i);
+                    if (child instanceof ChatMessageCell) {
+                        ChatMessageCell cell = (ChatMessageCell) child;
+                        if (cell.getMessageObject() == messageObject) {
+                            Log.i(MessageDeletionOverlay.TAG, cell.toString());
+                            views.add(cell);
+                            break;
+                        }
                     }
                 }
             }
+            messageDeletionOverlay.launchAnimation(views);
         }
 
         public void invalidateRowWithMessageObject(MessageObject messageObject) {

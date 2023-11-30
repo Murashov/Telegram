@@ -14,6 +14,8 @@ import androidx.annotation.Nullable;
 
 import com.google.android.exoplayer2.util.Log;
 
+import java.util.List;
+
 public class MessageDeletionOverlay extends FrameLayout  {
     public static String TAG = "MessageDeletionOverlay";
 
@@ -29,13 +31,15 @@ public class MessageDeletionOverlay extends FrameLayout  {
         super(context, attrs, defStyleAttr);
     }
 
-    public void launchAnimation(View view) {
-        view.setDrawingCacheEnabled(true);
-        view.buildDrawingCache();
-        Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
-        view.setDrawingCacheEnabled(false);
-        Log.i(TAG, "Bitmap width: " + bitmap.getWidth());
-        Log.i(TAG, "Bitmap height: " + bitmap.getHeight());
-        bitmap.recycle();
+    public void launchAnimation(List<View> views) {
+        for (View view : views) {
+            view.setDrawingCacheEnabled(true);
+            view.buildDrawingCache();
+            Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
+            view.setDrawingCacheEnabled(false);
+            Log.i(TAG, "Bitmap width: " + bitmap.getWidth());
+            Log.i(TAG, "Bitmap height: " + bitmap.getHeight());
+            bitmap.recycle();
+        }
     }
 }
