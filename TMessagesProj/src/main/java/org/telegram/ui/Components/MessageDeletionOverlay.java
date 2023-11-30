@@ -14,6 +14,7 @@ import android.util.AttributeSet;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -23,6 +24,7 @@ import com.google.android.exoplayer2.util.Log;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
+import org.telegram.messenger.Utilities;
 import org.telegram.ui.Components.spoilers.SpoilerEffect2;
 
 import java.util.List;
@@ -33,9 +35,8 @@ import javax.microedition.khronos.egl.EGLContext;
 import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 
-public class MessageDeletionOverlay extends FrameLayout  {
+public class MessageDeletionOverlay extends TextureView {
     public static String TAG = "MessageDeletionOverlay";
-    private TextureView textureView;
     private AnimationThread thread;
 
     public MessageDeletionOverlay(@NonNull Context context) {
@@ -54,9 +55,8 @@ public class MessageDeletionOverlay extends FrameLayout  {
     }
 
     private void init() {
-        textureView = new TextureView(getContext());
-        textureView.setSurfaceTextureListener(createSurfaceListener());
-        addView(textureView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        setSurfaceTextureListener(createSurfaceListener());
+        setOpaque(false);
     }
 
     public void launchAnimation(List<View> views) {
@@ -76,7 +76,7 @@ public class MessageDeletionOverlay extends FrameLayout  {
             @Override
             public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
                 if (thread == null) {
-                    thread = new AnimationThread(surface, width, height);
+                    thread = new AnimationThread(surface, getWidth(), getHeight());
                     thread.start();
                 }
             }
@@ -104,27 +104,33 @@ public class MessageDeletionOverlay extends FrameLayout  {
     }
 
     private class AnimationThread extends Thread {
-        private final double MIN_DELTA = 1.0 / AndroidUtilities.screenRefreshRate;
-        private final double MAX_DELTA = MIN_DELTA * 4;
-        private final Object resizeLock = new Object();
-        private final SurfaceTexture surfaceTexture;
-        private int width, height;
-        private boolean resize;
         private volatile boolean running = true;
-        private int drawProgram;
-        private EGL10 egl;
-        private EGLDisplay eglDisplay;
-        private EGLConfig eglConfig;
-        private EGLSurface eglSurface;
-        private EGLContext eglContext;
-        private int currentBuffer = 0;
-        private int[] particlesData;
+        private volatile boolean paused = false;
 
+        public final int MAX_FPS;
+        private final double MIN_DELTA;
+        private final double MAX_DELTA;
+
+        private final SurfaceTexture surfaceTexture;
+        private final Object resizeLock = new Object();
+        private boolean resize;
+        private int width, height;
+        private int particlesCount;
+        private float radius = AndroidUtilities.dpf2(1.2f);
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
+            MAX_FPS = (int) AndroidUtilities.screenRefreshRate;
+            MIN_DELTA = 1.0 / MAX_FPS;
+            MAX_DELTA = MIN_DELTA * 4;
+
             this.surfaceTexture = surfaceTexture;
             this.width = width;
             this.height = height;
+            this.particlesCount = particlesCount();
+        }
+
+        private int particlesCount() {
+            return (int) Utilities.clamp(width * height / (500f * 500f) * 1000, 10000, 500);
         }
 
         public void updateSize(int width, int height) {
@@ -139,15 +145,57 @@ public class MessageDeletionOverlay extends FrameLayout  {
             running = false;
         }
 
+        public void pause(boolean paused) {
+            this.paused = paused;
+        }
+
         @Override
         public void run() {
             init();
-            if (running) {
-                Log.i(TAG, "Success");
-            } else {
-                Log.i(TAG, "Failure");
+            long lastTime = System.nanoTime();
+            while (running) {
+                final long now = System.nanoTime();
+                double Δt = (now - lastTime) / 1_000_000_000.;
+                lastTime = now;
+
+                if (Δt < MIN_DELTA) {
+                    double wait = MIN_DELTA - Δt;
+                    try {
+                        long milli = (long) (wait * 1000L);
+                        int nano = (int) ((wait - milli / 1000.) * 1_000_000_000);
+                        sleep(milli, nano);
+                    } catch (Exception ignore) {
+                    }
+                    Δt = MIN_DELTA;
+                } else if (Δt > MAX_DELTA) {
+                    Δt = MAX_DELTA;
+                }
+
+                while (paused) {
+                    try {
+                        sleep(1000);
+                    } catch (Exception ignore) {
+                    }
+                }
+
+                checkResize();
+                drawFrame((float) Δt);
             }
+            die();
         }
+
+        private EGL10 egl;
+        private EGLDisplay eglDisplay;
+        private EGLConfig eglConfig;
+        private EGLSurface eglSurface;
+        private EGLContext eglContext;
+
+        private int drawProgram;
+
+        private boolean reset = true;
+
+        private int currentBuffer = 0;
+        private int[] particlesData;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -200,6 +248,9 @@ public class MessageDeletionOverlay extends FrameLayout  {
                 return;
             }
 
+            genParticlesData();
+
+            // draw program (vertex and fragment shaders)
             int vertexShader = GLES31.glCreateShader(GLES31.GL_VERTEX_SHADER);
             int fragmentShader = GLES31.glCreateShader(GLES31.GL_FRAGMENT_SHADER);
             if (vertexShader == 0 || fragmentShader == 0) {
@@ -232,6 +283,8 @@ public class MessageDeletionOverlay extends FrameLayout  {
             }
             GLES31.glAttachShader(drawProgram, vertexShader);
             GLES31.glAttachShader(drawProgram, fragmentShader);
+            String[] feedbackVaryings = {"outPosition", "outVelocity", "outTime", "outDuration"};
+            GLES31.glTransformFeedbackVaryings(drawProgram, feedbackVaryings, GLES31.GL_INTERLEAVED_ATTRIBS);
 
             GLES31.glLinkProgram(drawProgram);
             GLES31.glGetProgramiv(drawProgram, GLES31.GL_LINK_STATUS, status, 0);
@@ -240,12 +293,138 @@ public class MessageDeletionOverlay extends FrameLayout  {
                 running = false;
                 return;
             }
+
             GLES31.glViewport(0, 0, width, height);
             GLES31.glEnable(GLES31.GL_BLEND);
             GLES31.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
             GLES31.glUseProgram(drawProgram);
+        }
+
+        private float t;
+        private final float timeScale = .65f;
+
+        private void drawFrame(float Δt) {
+            if (!egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
+                running = false;
+                return;
+            }
+
+            t += Δt * timeScale;
+            if (t > 1000.f) {
+                t = 0;
+            }
+
+            GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
+            GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
+            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 24, 0); // Position (vec2)
+            GLES31.glEnableVertexAttribArray(0);
+            GLES31.glVertexAttribPointer(1, 2, GLES31.GL_FLOAT, false, 24, 8); // Velocity (vec2)
+            GLES31.glEnableVertexAttribArray(1);
+            GLES31.glVertexAttribPointer(2, 1, GLES31.GL_FLOAT, false, 24, 16); // Time (float)
+            GLES31.glEnableVertexAttribArray(2);
+            GLES31.glVertexAttribPointer(3, 1, GLES31.GL_FLOAT, false, 24, 20); // Duration (float)
+            GLES31.glEnableVertexAttribArray(3);
+            GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
+            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 24, 0); // Position (vec2)
+            GLES31.glEnableVertexAttribArray(0);
+            GLES31.glVertexAttribPointer(1, 2, GLES31.GL_FLOAT, false, 24, 8); // Velocity (vec2)
+            GLES31.glEnableVertexAttribArray(1);
+            GLES31.glVertexAttribPointer(2, 1, GLES31.GL_FLOAT, false, 24, 16); // Time (float)
+            GLES31.glEnableVertexAttribArray(2);
+            GLES31.glVertexAttribPointer(3, 1, GLES31.GL_FLOAT, false, 24, 20); // Duration (float)
+            GLES31.glEnableVertexAttribArray(3);
+            GLES31.glBeginTransformFeedback(GLES31.GL_POINTS);
+            GLES31.glDrawArrays(GLES31.GL_POINTS, 0, particlesCount);
+            GLES31.glEndTransformFeedback();
+
+            currentBuffer = 1 - currentBuffer;
+
+            egl.eglSwapBuffers(eglDisplay, eglSurface);
+
+            checkGlErrors();
+        }
+
+        private void die() {
+            if (particlesData != null) {
+                try {
+                    GLES31.glDeleteBuffers(2, particlesData, 0);
+                } catch (Exception e) {
+                    Log.e(TAG, e.toString());
+                }
+                particlesData = null;
+            }
+            if (drawProgram != 0) {
+                try {
+                    GLES31.glDeleteProgram(drawProgram);
+                } catch (Exception e) {
+                    Log.e(TAG, e.toString());
+                }
+                drawProgram = 0;
+            }
+            if (egl != null) {
+                try {
+                    egl.eglMakeCurrent(eglDisplay, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_SURFACE, EGL10.EGL_NO_CONTEXT);
+                } catch (Exception e) {
+                    Log.e(TAG, e.toString());
+                }
+                try {
+                    egl.eglDestroySurface(eglDisplay, eglSurface);
+                } catch (Exception e) {
+                    Log.e(TAG, e.toString());
+                }
+                try {
+                    egl.eglDestroyContext(eglDisplay, eglContext);
+                } catch (Exception e) {
+                    Log.e(TAG, e.toString());
+                }
+            }
+            try {
+                surfaceTexture.release();
+            } catch (Exception e) {
+                Log.e(TAG, e.toString());
+            }
+
+            checkGlErrors();
+        }
+
+        private void checkResize() {
+            synchronized (resizeLock) {
+                if (resize) {
+                    GLES31.glViewport(0, 0, width, height);
+                    int newParticlesCount = particlesCount();
+                    if (newParticlesCount > this.particlesCount) {
+                        reset = true;
+                        genParticlesData();
+                    }
+                    this.particlesCount = newParticlesCount;
+                    resize = false;
+                }
+            }
+        }
+
+        private void genParticlesData() {
+            if (particlesData != null) {
+                GLES31.glDeleteBuffers(2, particlesData, 0);
+            }
+
+            particlesData = new int[2];
+            GLES31.glGenBuffers(2, particlesData, 0);
+
+            for (int i = 0; i < 2; ++i) {
+                GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[i]);
+                GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, this.particlesCount * 6 * 4, null, GLES31.GL_DYNAMIC_DRAW);
+            }
+
+            checkGlErrors();
+        }
+
+        private void checkGlErrors() {
+            int err;
+            while ((err = GLES31.glGetError()) != GLES31.GL_NO_ERROR) {
+                Log.e(TAG, "gles error " + err);
+            }
         }
     }
 }
