@@ -513,26 +513,18 @@ public class MessageDeletionOverlay extends TextureView {
                     for (int x = left + halfStep; x < right; x += step) {
                         // Top left triangle
                         // Top left
-                        tempArray[i++] = toGlX(x - halfStep);
-                        tempArray[i++] = toGlY(y + halfStep);
+                        i = initVertex(tempArray, i, x, y, halfStep, -1, 1);
                         // Bottom left
-                        tempArray[i++] = toGlX(x - halfStep);
-                        tempArray[i++] = toGlY(y - halfStep);
+                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1);
                         // Top right
-                        tempArray[i++] = toGlX(x + halfStep);
-                        tempArray[i++] = toGlY(y + halfStep);
+                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1);
                         // Bottom right triangle
                         // Bottom right
-                        tempArray[i++] = toGlX(x + halfStep);
-                        tempArray[i++] = toGlY(y - halfStep);
+                        i = initVertex(tempArray, i, x, y, halfStep, 1, -1);
                         // Top right
-                        tempArray[i++] = toGlX(x + halfStep);
-                        tempArray[i++] = toGlY(y + halfStep);
+                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1);
                         // Bottom left
-                        tempArray[i++] = toGlX(x - halfStep);
-                        tempArray[i++] = toGlY(y - halfStep);
-
-                        Log.i(TAG, "X=" + x + "Y=" + y);
+                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1);
                     }
                 }
             }
@@ -545,6 +537,12 @@ public class MessageDeletionOverlay extends TextureView {
             vertexBuffer.put(resultArray);
             vertexBuffer.position(0);
             return vertexBuffer;
+        }
+
+        private int initVertex(float[] vertices, int index, int x, int y, int halfStep, int xSign, int ySign) {
+            vertices[index++] = toGlX(x + xSign * halfStep);
+            vertices[index++] = toGlY(y + ySign * halfStep);
+            return index;
         }
 
         private float toGlX(int x) {
