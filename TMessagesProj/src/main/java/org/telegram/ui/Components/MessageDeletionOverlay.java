@@ -10,6 +10,7 @@ import android.opengl.EGL14;
 import android.opengl.EGLExt;
 import android.opengl.GLES20;
 import android.opengl.GLES31;
+import android.opengl.GLUtils;
 import android.util.AttributeSet;
 import android.view.TextureView;
 import android.view.View;
@@ -27,7 +28,11 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.Components.spoilers.SpoilerEffect2;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import javax.microedition.khronos.egl.EGL10;
 import javax.microedition.khronos.egl.EGLConfig;
@@ -105,7 +110,7 @@ public class MessageDeletionOverlay extends TextureView {
 
     private class AnimationThread extends Thread {
         private volatile boolean running = true;
-        private volatile boolean paused = false;
+        private ConcurrentLinkedQueue<Bitmap> bitmapQueue = new ConcurrentLinkedQueue<>();
 
         public final int MAX_FPS;
         private final double MIN_DELTA;
@@ -116,6 +121,7 @@ public class MessageDeletionOverlay extends TextureView {
         private boolean resize;
         private int width, height;
         private int particlesCount;
+        private int step = 100;
         private float radius = AndroidUtilities.dpf2(1.2f);
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
@@ -129,8 +135,12 @@ public class MessageDeletionOverlay extends TextureView {
             this.particlesCount = particlesCount();
         }
 
+        private void scheduleAnimation(Bitmap bitmap) {
+            bitmapQueue.add(bitmap);
+        }
+
         private int particlesCount() {
-            return (int) Utilities.clamp(width * height / (500f * 500f) * 1000, 10000, 500);
+            return (width * height) / step;
         }
 
         public void updateSize(int width, int height) {
@@ -143,10 +153,6 @@ public class MessageDeletionOverlay extends TextureView {
 
         public void halt() {
             running = false;
-        }
-
-        public void pause(boolean paused) {
-            this.paused = paused;
         }
 
         @Override
@@ -171,13 +177,6 @@ public class MessageDeletionOverlay extends TextureView {
                     Δt = MAX_DELTA;
                 }
 
-                while (paused) {
-                    try {
-                        sleep(1000);
-                    } catch (Exception ignore) {
-                    }
-                }
-
                 checkResize();
                 drawFrame((float) Δt);
             }
@@ -191,9 +190,6 @@ public class MessageDeletionOverlay extends TextureView {
         private EGLContext eglContext;
 
         private int drawProgram;
-
-        private boolean reset = true;
-
         private int currentBuffer = 0;
         private int[] particlesData;
 
@@ -283,7 +279,7 @@ public class MessageDeletionOverlay extends TextureView {
             }
             GLES31.glAttachShader(drawProgram, vertexShader);
             GLES31.glAttachShader(drawProgram, fragmentShader);
-            String[] feedbackVaryings = {"outPosition", "outVelocity", "outTime", "outDuration"};
+            String[] feedbackVaryings = {"outPosition"};
             GLES31.glTransformFeedbackVaryings(drawProgram, feedbackVaryings, GLES31.GL_INTERLEAVED_ATTRIBS);
 
             GLES31.glLinkProgram(drawProgram);
@@ -318,23 +314,11 @@ public class MessageDeletionOverlay extends TextureView {
 
             GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
-            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 24, 0); // Position (vec2)
+            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 8, 0); // Position (vec2)
             GLES31.glEnableVertexAttribArray(0);
-            GLES31.glVertexAttribPointer(1, 2, GLES31.GL_FLOAT, false, 24, 8); // Velocity (vec2)
-            GLES31.glEnableVertexAttribArray(1);
-            GLES31.glVertexAttribPointer(2, 1, GLES31.GL_FLOAT, false, 24, 16); // Time (float)
-            GLES31.glEnableVertexAttribArray(2);
-            GLES31.glVertexAttribPointer(3, 1, GLES31.GL_FLOAT, false, 24, 20); // Duration (float)
-            GLES31.glEnableVertexAttribArray(3);
             GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
-            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 24, 0); // Position (vec2)
+            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 8, 0); // Position (vec2)
             GLES31.glEnableVertexAttribArray(0);
-            GLES31.glVertexAttribPointer(1, 2, GLES31.GL_FLOAT, false, 24, 8); // Velocity (vec2)
-            GLES31.glEnableVertexAttribArray(1);
-            GLES31.glVertexAttribPointer(2, 1, GLES31.GL_FLOAT, false, 24, 16); // Time (float)
-            GLES31.glEnableVertexAttribArray(2);
-            GLES31.glVertexAttribPointer(3, 1, GLES31.GL_FLOAT, false, 24, 20); // Duration (float)
-            GLES31.glEnableVertexAttribArray(3);
             GLES31.glBeginTransformFeedback(GLES31.GL_POINTS);
             GLES31.glDrawArrays(GLES31.GL_POINTS, 0, particlesCount);
             GLES31.glEndTransformFeedback();
@@ -344,6 +328,13 @@ public class MessageDeletionOverlay extends TextureView {
             egl.eglSwapBuffers(eglDisplay, eglSurface);
 
             checkGlErrors();
+        }
+
+        private void drawView() {
+            Bitmap bitmap = bitmapQueue.poll();
+            if (bitmap == null) {
+                return;
+            }
         }
 
         private void die() {
@@ -393,12 +384,8 @@ public class MessageDeletionOverlay extends TextureView {
             synchronized (resizeLock) {
                 if (resize) {
                     GLES31.glViewport(0, 0, width, height);
-                    int newParticlesCount = particlesCount();
-                    if (newParticlesCount > this.particlesCount) {
-                        reset = true;
-                        genParticlesData();
-                    }
-                    this.particlesCount = newParticlesCount;
+                    this.particlesCount = particlesCount();
+                    genParticlesData();
                     resize = false;
                 }
             }
@@ -412,12 +399,38 @@ public class MessageDeletionOverlay extends TextureView {
             particlesData = new int[2];
             GLES31.glGenBuffers(2, particlesData, 0);
 
-            for (int i = 0; i < 2; ++i) {
-                GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[i]);
-                GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, this.particlesCount * 6 * 4, null, GLES31.GL_DYNAMIC_DRAW);
-            }
+            final FloatBuffer coordinates = generateCoordinates();
+            final int size = coordinates.capacity() * 4;
+
+            GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[0]);
+            GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, coordinates, GLES31.GL_DYNAMIC_DRAW);
+
+            GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[1]);
+            GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, coordinates, GLES31.GL_DYNAMIC_DRAW);
 
             checkGlErrors();
+        }
+
+        private FloatBuffer generateCoordinates() {
+            final int size = particlesCount * 2;
+            int i = 0;
+            float[] resultArray = new float[size];
+            for (int y = step / 2; y < height; y += step) {
+                for (int x = step / 2; x < width; x += step) {
+                    final float xShare = x / (float) width;
+                    final float yShare = y / (float) height;
+                    final float glX = (xShare - 0.5f) * 2f;
+                    final float glY = (yShare - 0.5f) * -2f;
+                    resultArray[i++] = glX;
+                    resultArray[i++] = glY;
+                }
+            }
+            ByteBuffer vertexByteBuffer = ByteBuffer.allocateDirect(resultArray.length * 4);
+            vertexByteBuffer.order(ByteOrder.nativeOrder());
+            FloatBuffer vertexBuffer = vertexByteBuffer.asFloatBuffer();
+            vertexBuffer.put(resultArray);
+            vertexBuffer.position(0);
+            return vertexBuffer;
         }
 
         private void checkGlErrors() {
