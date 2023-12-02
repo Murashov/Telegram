@@ -205,7 +205,7 @@ public class MessageDeletionOverlay extends TextureView {
         public void run() {
             init();
             while (isWaiting) {
-
+                // TODO Wait
             }
             long lastTime = System.nanoTime();
             while (running) {
@@ -242,7 +242,9 @@ public class MessageDeletionOverlay extends TextureView {
         private int currentBuffer = 0;
         private int textureId = 0;
         private int[] particlesData;
-        int textureUniformHandle = 0;
+        private int textureUniformHandle = 0;
+        private int deltaTimeHandle = 0;
+        private int timeHandle = 0;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -353,6 +355,8 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glUseProgram(drawProgram);
 
             textureUniformHandle = GLES31.glGetUniformLocation(drawProgram, "uTexture");
+            deltaTimeHandle = GLES31.glGetUniformLocation(drawProgram, "deltaTime");
+            timeHandle = GLES31.glGetUniformLocation(drawProgram, "time");
         }
 
         private float t;
@@ -377,6 +381,10 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
             GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 8, 0); // Position (vec2)
             GLES31.glEnableVertexAttribArray(0);
+
+            GLES31.glUniform1f(deltaTimeHandle, Δt * timeScale);
+            GLES31.glUniform1f(timeHandle, t);
+
             GLES31.glBeginTransformFeedback(GLES31.GL_TRIANGLES);
             GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, particlesCount * 6);
             GLES31.glEndTransformFeedback();
