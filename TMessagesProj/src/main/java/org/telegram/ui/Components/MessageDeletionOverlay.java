@@ -6,14 +6,17 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.SurfaceTexture;
+import android.media.MediaScannerConnection;
 import android.opengl.EGL14;
 import android.opengl.EGLExt;
 import android.opengl.GLES20;
 import android.opengl.GLES31;
 import android.opengl.GLUtils;
+import android.os.Environment;
 import android.util.AttributeSet;
 import android.view.TextureView;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
@@ -28,6 +31,9 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.ui.Components.spoilers.SpoilerEffect2;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -65,6 +71,10 @@ public class MessageDeletionOverlay extends TextureView {
     }
 
     public void launchAnimation(List<View> views) {
+        Bitmap combined = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(combined);
+        int[] myLocation = new int[2];
+        getLocationOnScreen(myLocation);
         for (View view : views) {
             view.setDrawingCacheEnabled(true);
             view.buildDrawingCache();
@@ -72,18 +82,31 @@ public class MessageDeletionOverlay extends TextureView {
             view.setDrawingCacheEnabled(false);
             Log.i(TAG, "Bitmap width: " + bitmap.getWidth());
             Log.i(TAG, "Bitmap height: " + bitmap.getHeight());
+            int[] relativeLocation = getRelativeLocation(view, myLocation);
+            int x = relativeLocation[0];
+            int y = relativeLocation[1];
+            Log.i(TAG, "View location x: " + x);
+            Log.i(TAG, "View location y: " + y);
+            canvas.drawBitmap(bitmap, x, y, null);
             bitmap.recycle();
         }
+        thread.scheduleAnimation(combined);
+    }
+
+    private int[] getRelativeLocation(View view, int[] myLocation) {
+        int[] viewLocation = new int[2];
+        view.getLocationOnScreen(viewLocation);
+        viewLocation[0] -= myLocation[0];
+        viewLocation[1] -= myLocation[1];
+        return viewLocation;
     }
 
     private TextureView.SurfaceTextureListener createSurfaceListener() {
         return new TextureView.SurfaceTextureListener() {
             @Override
             public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface, int width, int height) {
-                if (thread == null) {
-                    thread = new AnimationThread(surface, getWidth(), getHeight());
-                    thread.start();
-                }
+                thread = new AnimationThread(surface, getWidth(), getHeight());
+                thread.start();
             }
 
             @Override
@@ -121,8 +144,9 @@ public class MessageDeletionOverlay extends TextureView {
         private boolean resize;
         private int width, height;
         private int particlesCount;
-        private int step = 100;
+        private int step = 30;
         private float radius = AndroidUtilities.dpf2(1.2f);
+        private volatile boolean isWaiting = true;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
             MAX_FPS = (int) AndroidUtilities.screenRefreshRate;
@@ -137,6 +161,7 @@ public class MessageDeletionOverlay extends TextureView {
 
         private void scheduleAnimation(Bitmap bitmap) {
             bitmapQueue.add(bitmap);
+            isWaiting = false;
         }
 
         private int particlesCount() {
@@ -158,6 +183,9 @@ public class MessageDeletionOverlay extends TextureView {
         @Override
         public void run() {
             init();
+            while (isWaiting) {
+
+            }
             long lastTime = System.nanoTime();
             while (running) {
                 final long now = System.nanoTime();
@@ -191,7 +219,9 @@ public class MessageDeletionOverlay extends TextureView {
 
         private int drawProgram;
         private int currentBuffer = 0;
+        private int textureId = 0;
         private int[] particlesData;
+        int textureUniformHandle = 0;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -290,12 +320,18 @@ public class MessageDeletionOverlay extends TextureView {
                 return;
             }
 
+            int[] textures = new int[1];
+            GLES20.glGenTextures(1, textures, 0);
+            textureId = textures[0];
+
             GLES31.glViewport(0, 0, width, height);
             GLES31.glEnable(GLES31.GL_BLEND);
             GLES31.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
             GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
             GLES31.glUseProgram(drawProgram);
+
+            textureUniformHandle = GLES31.glGetUniformLocation(drawProgram, "uTexture");
         }
 
         private float t;
@@ -312,6 +348,7 @@ public class MessageDeletionOverlay extends TextureView {
                 t = 0;
             }
 
+            drawView();
             GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
             GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 8, 0); // Position (vec2)
@@ -332,9 +369,21 @@ public class MessageDeletionOverlay extends TextureView {
 
         private void drawView() {
             Bitmap bitmap = bitmapQueue.poll();
-            if (bitmap == null) {
-                return;
+            if (bitmap != null) {
+                GLES31.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
+                GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+                GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+                GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+                GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
+
+                GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
+
+                bitmap.recycle();
             }
+            int textureUnit = 0;
+            GLES31.glActiveTexture(GLES31.GL_TEXTURE0 + textureUnit);
+            GLES31.glBindTexture(GLES31.GL_TEXTURE_2D, textureId);
+            GLES31.glUniform1i(textureUniformHandle, textureUnit);
         }
 
         private void die() {
