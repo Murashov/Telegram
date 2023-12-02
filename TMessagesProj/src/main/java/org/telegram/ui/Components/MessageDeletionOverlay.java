@@ -2,10 +2,8 @@ package org.telegram.ui.Components;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
+import android.graphics.Point;
 import android.graphics.SurfaceTexture;
 import android.media.MediaScannerConnection;
 import android.opengl.EGL14;
@@ -15,12 +13,8 @@ import android.opengl.GLES31;
 import android.opengl.GLUtils;
 import android.os.Environment;
 import android.util.AttributeSet;
-import android.util.DisplayMetrics;
 import android.view.TextureView;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -28,10 +22,7 @@ import androidx.annotation.Nullable;
 import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
-import org.telegram.messenger.Utilities;
-import org.telegram.ui.Components.spoilers.SpoilerEffect2;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -73,23 +64,22 @@ public class MessageDeletionOverlay extends TextureView {
     }
 
     public void launchAnimation(List<View> views) {
-        Bitmap combined = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(combined);
+        Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(atlas);
         int[] myLocation = new int[2];
         getLocationOnScreen(myLocation);
-        for (View view : views) {
+        ViewFrame[] frames = new ViewFrame[views.size()];
+        for (int i = 0; i < views.size(); i++) {
+            View view = views.get(i);
             Bitmap bitmap = getViewBitmap(view);
-            Log.i(TAG, "Bitmap width: " + bitmap.getWidth());
-            Log.i(TAG, "Bitmap height: " + bitmap.getHeight());
             int[] relativeLocation = getRelativeLocation(view, myLocation);
             int x = relativeLocation[0];
             int y = relativeLocation[1];
-            Log.i(TAG, "View location x: " + x);
-            Log.i(TAG, "View location y: " + y);
+            frames[i] = new ViewFrame(new Point(x, y), new Point(bitmap.getWidth(), bitmap.getHeight()));
             canvas.drawBitmap(bitmap, x, y, null);
             bitmap.recycle();
         }
-        thread.scheduleAnimation(combined);
+        thread.scheduleAnimation(new AnimationConfig(atlas, frames));
     }
 
     private void saveBitmap(Bitmap bitmap) {
@@ -153,9 +143,29 @@ public class MessageDeletionOverlay extends TextureView {
         };
     }
 
+    private static class AnimationConfig {
+        @NonNull public final Bitmap bitmap;
+        @NonNull public final ViewFrame[] frames;
+
+        private AnimationConfig(@NonNull Bitmap bitmap, @NonNull ViewFrame[] frames) {
+            this.bitmap = bitmap;
+            this.frames = frames;
+        }
+    }
+
+    private static class ViewFrame {
+        @NonNull public final Point location;
+        @NonNull public final Point size;
+
+        private ViewFrame(@NonNull Point location, @NonNull Point size) {
+            this.location = location;
+            this.size = size;
+        }
+    }
+
     private class AnimationThread extends Thread {
         private volatile boolean running = true;
-        private ConcurrentLinkedQueue<Bitmap> bitmapQueue = new ConcurrentLinkedQueue<>();
+        private ConcurrentLinkedQueue<AnimationConfig> animationQueue = new ConcurrentLinkedQueue<>();
 
         public final int MAX_FPS;
         private final double MIN_DELTA;
@@ -165,8 +175,8 @@ public class MessageDeletionOverlay extends TextureView {
         private final Object resizeLock = new Object();
         private boolean resize;
         private int width, height;
-        private int particlesCount;
-        private int step = 100;
+        private int attributeCount;
+        private int step = 30;
         private volatile boolean isWaiting = true;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
@@ -177,16 +187,11 @@ public class MessageDeletionOverlay extends TextureView {
             this.surfaceTexture = surfaceTexture;
             this.width = width;
             this.height = height;
-            this.particlesCount = particlesCount();
         }
 
-        private void scheduleAnimation(Bitmap bitmap) {
-            bitmapQueue.add(bitmap);
+        private void scheduleAnimation(AnimationConfig config) {
+            animationQueue.add(config);
             isWaiting = false;
-        }
-
-        private int particlesCount() {
-            return (width * height) / step;
         }
 
         public void updateSize(int width, int height) {
@@ -297,8 +302,6 @@ public class MessageDeletionOverlay extends TextureView {
                 return;
             }
 
-            genParticlesData();
-
             // draw program (vertex and fragment shaders)
             int vertexShader = GLES31.glCreateShader(GLES31.GL_VERTEX_SHADER);
             int fragmentShader = GLES31.glCreateShader(GLES31.GL_FRAGMENT_SHADER);
@@ -386,7 +389,7 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glUniform1f(timeHandle, t);
 
             GLES31.glBeginTransformFeedback(GLES31.GL_TRIANGLES);
-            GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, particlesCount * 6);
+            GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, attributeCount);
             GLES31.glEndTransformFeedback();
 
             currentBuffer = 1 - currentBuffer;
@@ -397,8 +400,12 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private void drawView() {
-            Bitmap bitmap = bitmapQueue.poll();
-            if (bitmap != null) {
+            AnimationConfig config = animationQueue.poll();
+            // TODO Handle reset on new animation
+            if (config != null) {
+                genParticlesData(config.frames);
+                Bitmap bitmap = config.bitmap;
+
                 GLES31.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
                 GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
                 GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
@@ -462,14 +469,15 @@ public class MessageDeletionOverlay extends TextureView {
             synchronized (resizeLock) {
                 if (resize) {
                     GLES31.glViewport(0, 0, width, height);
-                    this.particlesCount = particlesCount();
-                    genParticlesData();
+                    // TODO Handle resizing
+//                    this.attributeCount = particlesCount();
+//                    genParticlesData();
                     resize = false;
                 }
             }
         }
 
-        private void genParticlesData() {
+        private void genParticlesData(ViewFrame[] frames) {
             if (particlesData != null) {
                 GLES31.glDeleteBuffers(2, particlesData, 0);
             }
@@ -477,7 +485,7 @@ public class MessageDeletionOverlay extends TextureView {
             particlesData = new int[2];
             GLES31.glGenBuffers(2, particlesData, 0);
 
-            final FloatBuffer coordinates = generateCoordinates();
+            final FloatBuffer coordinates = generateCoordinates(frames);
             final int size = coordinates.capacity() * 4;
 
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[0]);
@@ -489,61 +497,48 @@ public class MessageDeletionOverlay extends TextureView {
             checkGlErrors();
         }
 
-        private FloatBuffer generateCoordinates() {
-//            final int pointCount = 6;
-//            final int coordinateCount = 2;
-//            final int size = particlesCount * coordinateCount * pointCount;
-//            final float[] resultArray = new float[size];
-//            int i = 0;
-//            // Top left
-//            resultArray[i++] = -1f;
-//            resultArray[i++] = 1f;
-//            // Bottom left
-//            resultArray[i++] = -1f;
-//            resultArray[i++] = -1f;
-//            // Top right
-//            resultArray[i++] = 1f;
-//            resultArray[i++] = 1f;
-//            // Bottom right triangle
-//            // Bottom right
-//            resultArray[i++] = 1f;
-//            resultArray[i++] = -1f;
-//            // Top right
-//            resultArray[i++] = 1f;
-//            resultArray[i++] = 1f;
-//            // Bottom left
-//            resultArray[i++] = -1f;
-//            resultArray[i++] = -1f;
+        private FloatBuffer generateCoordinates(ViewFrame[] frames) {
             final int pointCount = 6;
             final int coordinateCount = 2;
-            final int size = particlesCount * coordinateCount * pointCount;
-            int i = 0;
-            final float[] resultArray = new float[size];
+            final int size = ((width * height) / step) * coordinateCount * pointCount;
             final int halfStep = step / 2;
-            for (int y = halfStep; y < height; y += step) {
-                for (int x = halfStep; x < width; x += step) {
-                    // Top left triangle
-                    // Top left
-                    resultArray[i++] = toGlX(x - halfStep);
-                    resultArray[i++] = toGlY(y + halfStep);
-                    // Bottom left
-                    resultArray[i++] = toGlX(x - halfStep);
-                    resultArray[i++] = toGlY(y - halfStep);
-                    // Top right
-                    resultArray[i++] = toGlX(x + halfStep);
-                    resultArray[i++] = toGlY(y + halfStep);
-                    // Bottom right triangle
-                    // Bottom right
-                    resultArray[i++] = toGlX(x + halfStep);
-                    resultArray[i++] = toGlY(y - halfStep);
-                    // Top right
-                    resultArray[i++] = toGlX(x + halfStep);
-                    resultArray[i++] = toGlY(y + halfStep);
-                    // Bottom left
-                    resultArray[i++] = toGlX(x - halfStep);
-                    resultArray[i++] = toGlY(y - halfStep);
+            int i = 0;
+            final float[] tempArray = new float[size]; // TODO pre-calculate the size
+            for (ViewFrame frame : frames) {
+                final int top = frame.location.y;
+                final int bottom = top + frame.size.y;
+                final int left = frame.location.x;
+                final int right = left + frame.size.x;
+                for (int y = top + halfStep; y < bottom; y += step) {
+                    for (int x = left + halfStep; x < right; x += step) {
+                        // Top left triangle
+                        // Top left
+                        tempArray[i++] = toGlX(x - halfStep);
+                        tempArray[i++] = toGlY(y + halfStep);
+                        // Bottom left
+                        tempArray[i++] = toGlX(x - halfStep);
+                        tempArray[i++] = toGlY(y - halfStep);
+                        // Top right
+                        tempArray[i++] = toGlX(x + halfStep);
+                        tempArray[i++] = toGlY(y + halfStep);
+                        // Bottom right triangle
+                        // Bottom right
+                        tempArray[i++] = toGlX(x + halfStep);
+                        tempArray[i++] = toGlY(y - halfStep);
+                        // Top right
+                        tempArray[i++] = toGlX(x + halfStep);
+                        tempArray[i++] = toGlY(y + halfStep);
+                        // Bottom left
+                        tempArray[i++] = toGlX(x - halfStep);
+                        tempArray[i++] = toGlY(y - halfStep);
+
+                        Log.i(TAG, "X=" + x + "Y=" + y);
+                    }
                 }
             }
+            attributeCount = i;
+            final float[] resultArray = new float[attributeCount];
+            System.arraycopy(tempArray, 0, resultArray, 0, attributeCount);
             ByteBuffer vertexByteBuffer = ByteBuffer.allocateDirect(resultArray.length * 4);
             vertexByteBuffer.order(ByteOrder.nativeOrder());
             FloatBuffer vertexBuffer = vertexByteBuffer.asFloatBuffer();
