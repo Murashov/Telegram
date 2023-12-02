@@ -13,8 +13,7 @@ out vec2 vTexCoord;
 
 void main() {
     outPosition = inPosition;
-    vTexCoord = inPosition;
+    vTexCoord = vec2(inPosition.x / 2.0 + 0.5, -inPosition.y / 2.0 + 0.5);
 
-    gl_PointSize = 30.0;
     gl_Position = vec4(inPosition, 0., 1.);
 }

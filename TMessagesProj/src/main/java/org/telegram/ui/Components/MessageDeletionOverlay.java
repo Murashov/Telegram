@@ -2,6 +2,7 @@ package org.telegram.ui.Components;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -14,6 +15,7 @@ import android.opengl.GLES31;
 import android.opengl.GLUtils;
 import android.os.Environment;
 import android.util.AttributeSet;
+import android.util.DisplayMetrics;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
@@ -76,10 +78,7 @@ public class MessageDeletionOverlay extends TextureView {
         int[] myLocation = new int[2];
         getLocationOnScreen(myLocation);
         for (View view : views) {
-            view.setDrawingCacheEnabled(true);
-            view.buildDrawingCache();
-            Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
-            view.setDrawingCacheEnabled(false);
+            Bitmap bitmap = getViewBitmap(view);
             Log.i(TAG, "Bitmap width: " + bitmap.getWidth());
             Log.i(TAG, "Bitmap height: " + bitmap.getHeight());
             int[] relativeLocation = getRelativeLocation(view, myLocation);
@@ -91,6 +90,29 @@ public class MessageDeletionOverlay extends TextureView {
             bitmap.recycle();
         }
         thread.scheduleAnimation(combined);
+    }
+
+    private void saveBitmap(Bitmap bitmap) {
+        String filename = "telegram_bitmap.png";
+        File storageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+        File imageFile = new File(storageDir, filename);
+        try {
+            FileOutputStream fos = new FileOutputStream(imageFile);
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+            fos.flush();
+            fos.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        MediaScannerConnection.scanFile(getContext(), new String[]{imageFile.getAbsolutePath()}, null, null);
+    }
+
+    private Bitmap getViewBitmap(View view) {
+        view.setDrawingCacheEnabled(true);
+        view.buildDrawingCache();
+        Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
+        view.setDrawingCacheEnabled(false);
+        return bitmap;
     }
 
     private int[] getRelativeLocation(View view, int[] myLocation) {
@@ -144,8 +166,7 @@ public class MessageDeletionOverlay extends TextureView {
         private boolean resize;
         private int width, height;
         private int particlesCount;
-        private int step = 30;
-        private float radius = AndroidUtilities.dpf2(1.2f);
+        private int step = 100;
         private volatile boolean isWaiting = true;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
@@ -356,8 +377,8 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
             GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 8, 0); // Position (vec2)
             GLES31.glEnableVertexAttribArray(0);
-            GLES31.glBeginTransformFeedback(GLES31.GL_POINTS);
-            GLES31.glDrawArrays(GLES31.GL_POINTS, 0, particlesCount);
+            GLES31.glBeginTransformFeedback(GLES31.GL_TRIANGLES);
+            GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, particlesCount * 6);
             GLES31.glEndTransformFeedback();
 
             currentBuffer = 1 - currentBuffer;
@@ -461,17 +482,58 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private FloatBuffer generateCoordinates() {
-            final int size = particlesCount * 2;
+//            final int pointCount = 6;
+//            final int coordinateCount = 2;
+//            final int size = particlesCount * coordinateCount * pointCount;
+//            final float[] resultArray = new float[size];
+//            int i = 0;
+//            // Top left
+//            resultArray[i++] = -1f;
+//            resultArray[i++] = 1f;
+//            // Bottom left
+//            resultArray[i++] = -1f;
+//            resultArray[i++] = -1f;
+//            // Top right
+//            resultArray[i++] = 1f;
+//            resultArray[i++] = 1f;
+//            // Bottom right triangle
+//            // Bottom right
+//            resultArray[i++] = 1f;
+//            resultArray[i++] = -1f;
+//            // Top right
+//            resultArray[i++] = 1f;
+//            resultArray[i++] = 1f;
+//            // Bottom left
+//            resultArray[i++] = -1f;
+//            resultArray[i++] = -1f;
+            final int pointCount = 6;
+            final int coordinateCount = 2;
+            final int size = particlesCount * coordinateCount * pointCount;
             int i = 0;
-            float[] resultArray = new float[size];
-            for (int y = step / 2; y < height; y += step) {
-                for (int x = step / 2; x < width; x += step) {
-                    final float xShare = x / (float) width;
-                    final float yShare = y / (float) height;
-                    final float glX = (xShare - 0.5f) * 2f;
-                    final float glY = (yShare - 0.5f) * -2f;
-                    resultArray[i++] = glX;
-                    resultArray[i++] = glY;
+            final float[] resultArray = new float[size];
+            final int halfStep = step / 2;
+            for (int y = halfStep; y < height; y += step) {
+                for (int x = halfStep; x < width; x += step) {
+                    // Top left triangle
+                    // Top left
+                    resultArray[i++] = toGlX(x - halfStep);
+                    resultArray[i++] = toGlY(y + halfStep);
+                    // Bottom left
+                    resultArray[i++] = toGlX(x - halfStep);
+                    resultArray[i++] = toGlY(y - halfStep);
+                    // Top right
+                    resultArray[i++] = toGlX(x + halfStep);
+                    resultArray[i++] = toGlY(y + halfStep);
+                    // Bottom right triangle
+                    // Bottom right
+                    resultArray[i++] = toGlX(x + halfStep);
+                    resultArray[i++] = toGlY(y - halfStep);
+                    // Top right
+                    resultArray[i++] = toGlX(x + halfStep);
+                    resultArray[i++] = toGlY(y + halfStep);
+                    // Bottom left
+                    resultArray[i++] = toGlX(x - halfStep);
+                    resultArray[i++] = toGlY(y - halfStep);
                 }
             }
             ByteBuffer vertexByteBuffer = ByteBuffer.allocateDirect(resultArray.length * 4);
@@ -480,6 +542,16 @@ public class MessageDeletionOverlay extends TextureView {
             vertexBuffer.put(resultArray);
             vertexBuffer.position(0);
             return vertexBuffer;
+        }
+
+        private float toGlX(int x) {
+            final float xShare = x / (float) width;
+            return (xShare - 0.5f) * 2f;
+        }
+
+        private float toGlY(int y) {
+            final float yShare = y / (float) height;
+            return (yShare - 0.5f) * -2f;
         }
 
         private void checkGlErrors() {
