@@ -250,6 +250,8 @@ public class MessageDeletionOverlay extends TextureView {
         private int textureUniformHandle = 0;
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
+        private int isInitializedHandle = 0;
+        private boolean isInitialized = false;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -335,7 +337,13 @@ public class MessageDeletionOverlay extends TextureView {
             }
             GLES31.glAttachShader(drawProgram, vertexShader);
             GLES31.glAttachShader(drawProgram, fragmentShader);
-            String[] feedbackVaryings = {"outPosition"};
+            String[] feedbackVaryings = {
+                    "outPosition",
+                    "outTexCoord",
+                    "outVelocity",
+                    "outLifetime",
+                    "outSeed"
+            };
             GLES31.glTransformFeedbackVaryings(drawProgram, feedbackVaryings, GLES31.GL_INTERLEAVED_ATTRIBS);
 
             GLES31.glLinkProgram(drawProgram);
@@ -360,10 +368,20 @@ public class MessageDeletionOverlay extends TextureView {
             textureUniformHandle = GLES31.glGetUniformLocation(drawProgram, "uTexture");
             deltaTimeHandle = GLES31.glGetUniformLocation(drawProgram, "deltaTime");
             timeHandle = GLES31.glGetUniformLocation(drawProgram, "time");
+            isInitializedHandle = GLES31.glGetUniformLocation(drawProgram, "isInitialized");
+            GLES31.glUniform1i(isInitializedHandle, 0);
         }
 
         private float t;
         private final float timeScale = .65f;
+
+        private static final int S_FLOAT = 4;
+        private static final int SIZE_POSITION = 8;
+        private static final int SIZE_TEX_COORD = 8;
+        private static final int SIZE_VELOCITY = 8;
+        private static final int SIZE_LIFETIME = 4;
+        private static final int SIZE_SEED = 4;
+        private static final int STRIDE = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED;
 
         private void drawFrame(float Δt) {
             if (!egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
@@ -378,15 +396,19 @@ public class MessageDeletionOverlay extends TextureView {
 
             drawView();
             GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
-            GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
-            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 8, 0); // Position (vec2)
-            GLES31.glEnableVertexAttribArray(0);
-            GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
-            GLES31.glVertexAttribPointer(0, 2, GLES31.GL_FLOAT, false, 8, 0); // Position (vec2)
-            GLES31.glEnableVertexAttribArray(0);
 
+            GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
+            bindAttributes();
+            GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
+            bindAttributes();
+
+            // Uniforms
             GLES31.glUniform1f(deltaTimeHandle, Δt * timeScale);
             GLES31.glUniform1f(timeHandle, t);
+            if (!isInitialized) {
+                GLES31.glUniform1i(isInitializedHandle, 1);
+                isInitialized = true;
+            }
 
             GLES31.glBeginTransformFeedback(GLES31.GL_TRIANGLES);
             GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, attributeCount);
@@ -397,6 +419,27 @@ public class MessageDeletionOverlay extends TextureView {
             egl.eglSwapBuffers(eglDisplay, eglSurface);
 
             checkGlErrors();
+        }
+
+        private void bindAttributes() {
+            int offset = 0;
+            int index = 0;
+            // Position
+            offset = bindFloatAttribute(index++, 2, offset);
+            // Texture
+            offset = bindFloatAttribute(index++, 2, offset);
+            // Velocity
+            offset = bindFloatAttribute(index++, 2, offset);
+            // Lifetime
+            offset = bindFloatAttribute(index++, 1, offset);
+            // Seed
+            offset = bindFloatAttribute(index++, 1, offset);
+        }
+
+        private int bindFloatAttribute(int index, int size, int offset) {
+            GLES31.glVertexAttribPointer(index, size, GLES31.GL_FLOAT, false, STRIDE, offset);
+            GLES31.glEnableVertexAttribArray(index);
+            return offset + size * S_FLOAT;
         }
 
         private void drawView() {
@@ -492,7 +535,7 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, coordinates, GLES31.GL_DYNAMIC_DRAW);
 
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[1]);
-            GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, coordinates, GLES31.GL_DYNAMIC_DRAW);
+            GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, null, GLES31.GL_DYNAMIC_DRAW);
 
             checkGlErrors();
         }
@@ -511,20 +554,21 @@ public class MessageDeletionOverlay extends TextureView {
                 final int right = left + frame.size.x;
                 for (int y = top + halfStep; y < bottom; y += step) {
                     for (int x = left + halfStep; x < right; x += step) {
+                        final float seed = (i * 1.15f + 213.531f) / 144.6f * x - 0.321f * y;
                         // Top left triangle
                         // Top left
-                        i = initVertex(tempArray, i, x, y, halfStep, -1, 1);
+                        i = initVertex(tempArray, i, x, y, halfStep, -1, 1, seed);
                         // Bottom left
-                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1);
+                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1, seed);
                         // Top right
-                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1);
+                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1, seed);
                         // Bottom right triangle
                         // Bottom right
-                        i = initVertex(tempArray, i, x, y, halfStep, 1, -1);
+                        i = initVertex(tempArray, i, x, y, halfStep, 1, -1, seed);
                         // Top right
-                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1);
+                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1, seed);
                         // Bottom left
-                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1);
+                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1, seed);
                     }
                 }
             }
@@ -539,9 +583,29 @@ public class MessageDeletionOverlay extends TextureView {
             return vertexBuffer;
         }
 
-        private int initVertex(float[] vertices, int index, int x, int y, int halfStep, int xSign, int ySign) {
+        private int initVertex(
+                float[] vertices,
+                int index,
+                int x,
+                int y,
+                int halfStep,
+                int xSign,
+                int ySign,
+                float seed
+        ) {
+            // Position
             vertices[index++] = toGlX(x + xSign * halfStep);
             vertices[index++] = toGlY(y + ySign * halfStep);
+            // Texture
+            vertices[index++] = 0f;
+            vertices[index++] = 0f;
+            // Velocity
+            vertices[index++] = 0f;
+            vertices[index++] = 0f;
+            // Lifetime
+            vertices[index++] = 0f;
+            // Seed
+            vertices[index++] = seed;
             return index;
         }
 
