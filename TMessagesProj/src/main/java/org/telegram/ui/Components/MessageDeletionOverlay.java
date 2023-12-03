@@ -74,6 +74,7 @@ public class MessageDeletionOverlay extends TextureView {
      Handle resize
      Only play on deletion
      Handle large size
+     Handle transparent BG on dark mode
      */
     public void launchAnimation(List<View> views) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
@@ -192,6 +193,7 @@ public class MessageDeletionOverlay extends TextureView {
         private boolean resize;
         private int width, height;
         private int attributeCount;
+        private int particleCount;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
             MAX_FPS = (int) AndroidUtilities.screenRefreshRate;
@@ -229,6 +231,7 @@ public class MessageDeletionOverlay extends TextureView {
                 long lastTime = 0;
                 while (running) {
                     if (time > ANIMATION_DURATION) {
+                        GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
                         while (!pollBitmap()) {
                             try {
                                 lock.wait();
@@ -288,7 +291,7 @@ public class MessageDeletionOverlay extends TextureView {
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
 
-        private static final int PARTICLE_SIZE = 6;
+        private static final int PARTICLE_SIZE = 4;
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 2;
         private static final int SIZE_TEX_COORD = 2;
@@ -415,7 +418,6 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glViewport(0, 0, width, height);
             GLES31.glEnable(GLES31.GL_BLEND);
             GLES31.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA);
-            GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
             GLES31.glUseProgram(drawProgram);
 
@@ -461,19 +463,17 @@ public class MessageDeletionOverlay extends TextureView {
                 return;
             }
             GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
-
-            GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
-            bindAttributes();
-            GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
-            bindAttributes();
-
             // Uniforms
             GLES31.glUniform1f(deltaTimeHandle, deltaTime);
             GLES31.glUniform1f(timeHandle, time);
 
+            GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
+            bindAttributes();
+
+            GLES31.glBindBufferBase(GLES31.GL_TRANSFORM_FEEDBACK_BUFFER, 0, particlesData[1 - currentBuffer]);
             int mode = GLES31.GL_POINTS;
             GLES31.glBeginTransformFeedback(mode);
-            GLES31.glDrawArrays(mode, 0, attributeCount);
+            GLES31.glDrawArraysInstanced(mode, 0, 1, particleCount);
             GLES31.glEndTransformFeedback();
 
             currentBuffer = 1 - currentBuffer;
@@ -503,6 +503,7 @@ public class MessageDeletionOverlay extends TextureView {
         private int bindFloatAttribute(int index, int size, int offset) {
             GLES31.glVertexAttribPointer(index, size, GLES31.GL_FLOAT, false, STRIDE, offset);
             GLES31.glEnableVertexAttribArray(index);
+            GLES31.glVertexAttribDivisor(index, 1);
             return offset + size * S_FLOAT;
         }
 
@@ -606,11 +607,11 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private FloatBuffer generateAttributes(ViewFrame[] frames) {
-            final int particleCount = calculateParticleCount(frames);
-            attributeCount = particleCount * VERTICES_PER_PARTICLE * ATTRIBUTES_PER_VERTEX;
+            particleCount = calculateParticleCount(frames);
+            int size = particleCount * VERTICES_PER_PARTICLE * ATTRIBUTES_PER_VERTEX;
             final int halfSize = PARTICLE_SIZE / 2;
             int i = 0;
-            final float[] attributes = new float[attributeCount];
+            final float[] attributes = new float[size];
             for (ViewFrame frame : frames) {
                 final int top = frame.location.y;
                 final int bottom = top + frame.size.y + halfSize;
