@@ -8,9 +8,10 @@ in vec2 vTexCoord;
 in float alpha;
 
 uniform sampler2D uTexture;
-uniform float time;
+uniform vec2 localPointSize;
 
 void main() {
-    vec4 color = texture(uTexture, vTexCoord);
+    vec2 offsetInPoint = localPointSize * (gl_PointCoord - 0.5);
+    vec4 color = texture(uTexture, vTexCoord + offsetInPoint);
     fragColor = vec4(color.rgb, color.a * alpha);
 }

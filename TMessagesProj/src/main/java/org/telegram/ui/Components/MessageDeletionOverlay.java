@@ -288,7 +288,7 @@ public class MessageDeletionOverlay extends TextureView {
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
 
-        private static final int PARTICLE_SIZE = 6;
+        private static final int PARTICLE_SIZE = 4;
         private static final int HALF_SIZE = PARTICLE_SIZE / 2;
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 2;
@@ -298,10 +298,10 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int SIZE_SEED = 1;
         private static final int SIZE_X_SHARE = 1;
         private static final int ATTRIBUTES_PER_VERTEX = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
-        private static final int VERTICES_PER_PARTICLE = 6;
+        private static final int VERTICES_PER_PARTICLE = 1;
         private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
-        private static final float MAX_SPEED = 1700f;
-        private static final float UP_ACCELERATION = 300f;
+        private static final float MAX_SPEED = 2500f;
+        private static final float UP_ACCELERATION = 500f;
         private static final float EASE_IN_DURATION = 0.8f;
         private static final float MIN_LIFETIME = 0.7f;
         private static final float MAX_LIFETIME = 1.5f;
@@ -445,6 +445,15 @@ public class MessageDeletionOverlay extends TextureView {
                     GLES31.glGetUniformLocation(drawProgram, "maxLifetime"),
                     MAX_LIFETIME
             );
+            GLES31.glUniform1f(
+                    GLES31.glGetUniformLocation(drawProgram, "pointSize"),
+                    PARTICLE_SIZE
+            );
+            GLES31.glUniform2f(
+                    GLES31.glGetUniformLocation(drawProgram, "localPointSize"),
+                    PARTICLE_SIZE / (float) width,
+                    PARTICLE_SIZE / (float) height
+            );
         }
 
         private void drawFrame(float deltaTime) {
@@ -463,8 +472,9 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glUniform1f(deltaTimeHandle, deltaTime);
             GLES31.glUniform1f(timeHandle, time);
 
-            GLES31.glBeginTransformFeedback(GLES31.GL_TRIANGLES);
-            GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, attributeCount);
+            int mode = GLES31.GL_POINTS;
+            GLES31.glBeginTransformFeedback(mode);
+            GLES31.glDrawArrays(mode, 0, attributeCount);
             GLES31.glEndTransformFeedback();
 
             currentBuffer = 1 - currentBuffer;
@@ -610,20 +620,7 @@ public class MessageDeletionOverlay extends TextureView {
                 for (int y = top + halfSize; y < bottom; y += PARTICLE_SIZE) {
                     for (int x = left + halfSize; x < right; x += PARTICLE_SIZE) {
                         final float seed = random.nextFloat(); // TODO Test performance
-                        // Top left triangle
-                        // Top left
-                        i = initVertex(attributes, i, x, y, -1, 1, seed);
-                        // Bottom left
-                        i = initVertex(attributes, i, x, y, -1, -1, seed);
-                        // Top right
-                        i = initVertex(attributes, i, x, y, 1, 1, seed);
-                        // Bottom right triangle
-                        // Bottom right
-                        i = initVertex(attributes, i, x, y, 1, -1, seed);
-                        // Top right
-                        i = initVertex(attributes, i, x, y, 1, 1, seed);
-                        // Bottom left
-                        i = initVertex(attributes, i, x, y, -1, -1, seed);
+                        i = initVertex(attributes, i, x, y, seed);
                     }
                 }
             }
@@ -660,13 +657,11 @@ public class MessageDeletionOverlay extends TextureView {
                 int index,
                 int x,
                 int y,
-                int xSign,
-                int ySign,
                 float seed
         ) {
             // Position
-            vertices[index++] = toGlX(x + xSign * HALF_SIZE);
-            vertices[index++] = toGlY(y + ySign * HALF_SIZE);
+            vertices[index++] = toGlX(x);
+            vertices[index++] = toGlY(y);
             // Texture
             vertices[index++] = 0f;
             vertices[index++] = 0f;

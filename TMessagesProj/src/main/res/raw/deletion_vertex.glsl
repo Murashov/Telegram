@@ -22,6 +22,7 @@ uniform vec2 maxSpeed;
 uniform float acceleration;
 uniform float easeInDuration;
 uniform float time;
+uniform float pointSize;
 
 float rand(vec2 n) {
     return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 4375.5453);
@@ -66,5 +67,6 @@ void main() {
 
     vTexCoord = outTexCoord;
     alpha = max(0.0, min(0.3, outLifetime) / 0.3);
+    gl_PointSize = pointSize;
     gl_Position = vec4(inPosition, 0.0, 1.0);
 }
