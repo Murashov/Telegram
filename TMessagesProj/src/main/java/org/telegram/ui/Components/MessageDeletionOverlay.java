@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import javax.microedition.khronos.egl.EGL10;
@@ -176,7 +177,7 @@ public class MessageDeletionOverlay extends TextureView {
         private boolean resize;
         private int width, height;
         private int attributeCount;
-        private int step = 30;
+        private int step = 10;
         private volatile boolean isWaiting = true;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
@@ -250,8 +251,6 @@ public class MessageDeletionOverlay extends TextureView {
         private int textureUniformHandle = 0;
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
-        private int isInitializedHandle = 0;
-        private boolean isInitialized = false;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -368,8 +367,6 @@ public class MessageDeletionOverlay extends TextureView {
             textureUniformHandle = GLES31.glGetUniformLocation(drawProgram, "uTexture");
             deltaTimeHandle = GLES31.glGetUniformLocation(drawProgram, "deltaTime");
             timeHandle = GLES31.glGetUniformLocation(drawProgram, "time");
-            isInitializedHandle = GLES31.glGetUniformLocation(drawProgram, "isInitialized");
-            GLES31.glUniform1i(isInitializedHandle, 0);
         }
 
         private float t;
@@ -404,10 +401,6 @@ public class MessageDeletionOverlay extends TextureView {
             // Uniforms
             GLES31.glUniform1f(deltaTimeHandle, deltaTime);
             GLES31.glUniform1f(timeHandle, t);
-            if (!isInitialized) {
-                GLES31.glUniform1i(isInitializedHandle, 1);
-                isInitialized = true;
-            }
 
             GLES31.glBeginTransformFeedback(GLES31.GL_TRIANGLES);
             GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, attributeCount);
@@ -547,6 +540,7 @@ public class MessageDeletionOverlay extends TextureView {
             final int halfStep = step / 2;
             int i = 0;
             final float[] tempArray = new float[size]; // TODO pre-calculate the size
+            final Random random = new Random();
             for (ViewFrame frame : frames) {
                 final int top = frame.location.y;
                 final int bottom = top + frame.size.y;
@@ -554,7 +548,7 @@ public class MessageDeletionOverlay extends TextureView {
                 final int right = left + frame.size.x;
                 for (int y = top + halfStep; y < bottom; y += step) {
                     for (int x = left + halfStep; x < right; x += step) {
-                        final float seed = (i * 1.15f + 213.531f) / 144.6f * x - 0.321f * y;
+                        final float seed = random.nextFloat(); // TODO Test performance
                         // Top left triangle
                         // Top left
                         i = initVertex(tempArray, i, x, y, halfStep, -1, 1, seed);
