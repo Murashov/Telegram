@@ -217,9 +217,12 @@ public class MessageDeletionOverlay extends TextureView {
             while (isWaiting) {
                 // TODO Wait
             }
-            long lastTime = System.nanoTime();
+            long lastTime = 0;
             while (running) {
                 final long now = System.nanoTime();
+                if (lastTime == 0) {
+                    lastTime = now;
+                }
                 double deltaTime = (now - lastTime) / 1_000_000_000.;
                 lastTime = now;
 
@@ -236,6 +239,10 @@ public class MessageDeletionOverlay extends TextureView {
                     deltaTime = MAX_DELTA;
                 }
 
+                if (time > 1000f || pollBitmap()) {
+                    time = 0f;
+                }
+                time += deltaTime;
                 checkResize();
                 drawFrame((float) deltaTime);
             }
@@ -395,7 +402,7 @@ public class MessageDeletionOverlay extends TextureView {
             );
         }
 
-        private float t;
+        private float time;
 
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 8;
@@ -411,13 +418,6 @@ public class MessageDeletionOverlay extends TextureView {
                 running = false;
                 return;
             }
-
-            t += deltaTime;
-            if (t > 1000.f) {
-                t = 0;
-            }
-
-            drawView();
             GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
 
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
@@ -427,7 +427,7 @@ public class MessageDeletionOverlay extends TextureView {
 
             // Uniforms
             GLES31.glUniform1f(deltaTimeHandle, deltaTime);
-            GLES31.glUniform1f(timeHandle, t);
+            GLES31.glUniform1f(timeHandle, time);
 
             GLES31.glBeginTransformFeedback(GLES31.GL_TRIANGLES);
             GLES31.glDrawArrays(GLES31.GL_TRIANGLES, 0, attributeCount);
@@ -463,9 +463,8 @@ public class MessageDeletionOverlay extends TextureView {
             return offset + size * S_FLOAT;
         }
 
-        private void drawView() {
+        private boolean pollBitmap() {
             AnimationConfig config = animationQueue.poll();
-            // TODO Handle reset on new animation
             if (config != null) {
                 genParticlesData(config.frames);
                 Bitmap bitmap = config.bitmap;
@@ -484,7 +483,9 @@ public class MessageDeletionOverlay extends TextureView {
                 GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
 
                 bitmap.recycle();
+                return true;
             }
+            return false;
         }
 
         private void die() {
