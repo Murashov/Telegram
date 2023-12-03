@@ -64,6 +64,16 @@ public class MessageDeletionOverlay extends TextureView {
         setOpaque(false);
     }
 
+    /*
+     TODO:
+     1. Large bitmap crash
+     2. Black border
+     3. Change ease-in
+     4. Artifacts
+     5. Overlay position
+     6. Array allocation
+     7. Generate last row/col of particles
+     */
     public void launchAnimation(List<View> views) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(atlas);
@@ -181,8 +191,6 @@ public class MessageDeletionOverlay extends TextureView {
         private boolean resize;
         private int width, height;
         private int attributeCount;
-        private int step = 10;
-        private volatile boolean isWaiting = true;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
             MAX_FPS = (int) AndroidUtilities.screenRefreshRate;
@@ -195,8 +203,10 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private void scheduleAnimation(AnimationConfig config) {
-            animationQueue.add(config);
-            isWaiting = false;
+            synchronized (lock) {
+                animationQueue.add(config);
+                lock.notifyAll();
+            }
         }
 
         public void updateSize(int width, int height) {
@@ -211,41 +221,52 @@ public class MessageDeletionOverlay extends TextureView {
             running = false;
         }
 
+        private final Object lock = new Object();
+
+        private void loop() {
+            synchronized (lock) {
+                long lastTime = 0;
+                while (running) {
+                    if (time > ANIMATION_DURATION) {
+                        while (!pollBitmap()) {
+                            try {
+                                lock.wait();
+                            } catch (InterruptedException ignore) {
+                            }
+                        }
+                        time = 0f;
+                    }
+
+                    final long now = System.nanoTime();
+                    if (lastTime == 0) {
+                        lastTime = now;
+                    }
+                    double deltaTime = (now - lastTime) / 1_000_000_000.;
+                    lastTime = now;
+
+                    if (deltaTime < MIN_DELTA) {
+                        double wait = MIN_DELTA - deltaTime;
+                        long milli = (long) (wait * 1000L);
+                        int nano = (int) ((wait - milli / 1000.) * 1_000_000_000);
+                        try {
+                            lock.wait(milli, nano);
+                        } catch (InterruptedException ignore) {
+                        }
+                        deltaTime = MIN_DELTA;
+                    } else if (deltaTime > MAX_DELTA) {
+                        deltaTime = MAX_DELTA;
+                    }
+
+                    time += deltaTime;
+                    checkResize();
+                    drawFrame((float) deltaTime);
+                }
+            }
+        }
         @Override
         public void run() {
             init();
-            while (isWaiting) {
-                // TODO Wait
-            }
-            long lastTime = 0;
-            while (running) {
-                final long now = System.nanoTime();
-                if (lastTime == 0) {
-                    lastTime = now;
-                }
-                double deltaTime = (now - lastTime) / 1_000_000_000.;
-                lastTime = now;
-
-                if (deltaTime < MIN_DELTA) {
-                    double wait = MIN_DELTA - deltaTime;
-                    try {
-                        long milli = (long) (wait * 1000L);
-                        int nano = (int) ((wait - milli / 1000.) * 1_000_000_000);
-                        sleep(milli, nano);
-                    } catch (Exception ignore) {
-                    }
-                    deltaTime = MIN_DELTA;
-                } else if (deltaTime > MAX_DELTA) {
-                    deltaTime = MAX_DELTA;
-                }
-
-                if (time > 1000f || pollBitmap()) {
-                    time = 0f;
-                }
-                time += deltaTime;
-                checkResize();
-                drawFrame((float) deltaTime);
-            }
+            loop();
             die();
         }
 
@@ -263,8 +284,13 @@ public class MessageDeletionOverlay extends TextureView {
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
 
+        private static final int PARTICLE_SIZE = 10;
         private static final float MAX_SPEED = 1700f;
         private static final float UP_ACCELERATION = 300f;
+        private static final float EASE_IN_DURATION = 0.8f;
+        private static final float MIN_LIFETIME = 0.7f;
+        private static final float MAX_LIFETIME = 1.5f;
+        private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -394,15 +420,19 @@ public class MessageDeletionOverlay extends TextureView {
             );
             GLES31.glUniform1f(
                     GLES31.glGetUniformLocation(drawProgram, "easeInDuration"),
-                    0.8f
+                    EASE_IN_DURATION
             );
             GLES31.glUniform1f(
-                    GLES31.glGetUniformLocation(drawProgram, "animationDuration"),
-                    4f
+                    GLES31.glGetUniformLocation(drawProgram, "minLifetime"),
+                    MIN_LIFETIME
+            );
+            GLES31.glUniform1f(
+                    GLES31.glGetUniformLocation(drawProgram, "maxLifetime"),
+                    MAX_LIFETIME
             );
         }
 
-        private float time;
+        private float time = Float.MAX_VALUE;
 
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 8;
@@ -566,8 +596,8 @@ public class MessageDeletionOverlay extends TextureView {
         private FloatBuffer generateAttributes(ViewFrame[] frames) {
             final int pointCount = 6;
             final int coordinateCount = 2;
-            final int size = ((width * height) / step) * coordinateCount * pointCount;
-            final int halfStep = step / 2;
+            final int size = ((width * height) / PARTICLE_SIZE) * coordinateCount * pointCount;
+            final int halfSize = PARTICLE_SIZE / 2;
             int i = 0;
             final float[] tempArray = new float[size]; // TODO pre-calculate the size
             final Random random = new Random();
@@ -576,23 +606,23 @@ public class MessageDeletionOverlay extends TextureView {
                 final int bottom = top + frame.size.y;
                 final int left = frame.location.x;
                 final int right = left + frame.size.x;
-                for (int y = top + halfStep; y < bottom; y += step) {
-                    for (int x = left + halfStep; x < right; x += step) {
+                for (int y = top + halfSize; y < bottom; y += PARTICLE_SIZE) {
+                    for (int x = left + halfSize; x < right; x += PARTICLE_SIZE) {
                         final float seed = random.nextFloat(); // TODO Test performance
                         // Top left triangle
                         // Top left
-                        i = initVertex(tempArray, i, x, y, halfStep, -1, 1, seed);
+                        i = initVertex(tempArray, i, x, y, halfSize, -1, 1, seed);
                         // Bottom left
-                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1, seed);
+                        i = initVertex(tempArray, i, x, y, halfSize, -1, -1, seed);
                         // Top right
-                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1, seed);
+                        i = initVertex(tempArray, i, x, y, halfSize, 1, 1, seed);
                         // Bottom right triangle
                         // Bottom right
-                        i = initVertex(tempArray, i, x, y, halfStep, 1, -1, seed);
+                        i = initVertex(tempArray, i, x, y, halfSize, 1, -1, seed);
                         // Top right
-                        i = initVertex(tempArray, i, x, y, halfStep, 1, 1, seed);
+                        i = initVertex(tempArray, i, x, y, halfSize, 1, 1, seed);
                         // Bottom left
-                        i = initVertex(tempArray, i, x, y, halfStep, -1, -1, seed);
+                        i = initVertex(tempArray, i, x, y, halfSize, -1, -1, seed);
                     }
                 }
             }
@@ -612,14 +642,14 @@ public class MessageDeletionOverlay extends TextureView {
                 int index,
                 int x,
                 int y,
-                int halfStep,
+                int halfSize,
                 int xSign,
                 int ySign,
                 float seed
         ) {
             // Position
-            vertices[index++] = toGlX(x + xSign * halfStep);
-            vertices[index++] = toGlY(y + ySign * halfStep);
+            vertices[index++] = toGlX(x + xSign * halfSize);
+            vertices[index++] = toGlY(y + ySign * halfSize);
             // Texture
             vertices[index++] = 0f;
             vertices[index++] = 0f;

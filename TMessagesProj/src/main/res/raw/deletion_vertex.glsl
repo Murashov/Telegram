@@ -22,7 +22,6 @@ uniform vec2 maxSpeed;
 uniform float acceleration;
 uniform float easeInDuration;
 uniform float time;
-uniform float animationDuration;
 
 float rand(vec2 n) {
     return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 4375.5453);
@@ -48,16 +47,6 @@ float calculateFraction() {
     } else {
         return 1.0;
     }
-//    float windowSize = 0.8;
-//    float effectiveT = inXShare;
-//    float windowStartOffset = -windowSize;
-//    float windowEndOffset = 1.0;
-//
-//    float windowPosition = (1.0 - fraction) * windowStartOffset + fraction * windowEndOffset;
-//    float windowT = max(0.0, min(windowSize, effectiveT - windowPosition)) / windowSize;
-//    float localT = 1.0 - effectiveT;
-//
-//    return windowT;
 }
 
 void main() {
