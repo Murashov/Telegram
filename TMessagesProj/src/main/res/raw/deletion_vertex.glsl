@@ -27,20 +27,26 @@ vec2 initVelocity() {
     return vec2(cos(direction) * velocity, sin(direction) * velocity);
 }
 
+float initLifetime() {
+    float min = 0.7;
+    float max = 1.5;
+    return min + rand(vec2(inSeed - 1.2, inSeed * 153.5)) * (max - min);
+}
+
 void main() {
     if (inVelocity.xy == vec2(0.0, 0.0) && inTexCoord == vec2(0.0, 0.0)) { // TODO change check
         outTexCoord = vec2(inPosition.x / 2.0 + 0.5, -inPosition.y / 2.0 + 0.5);
         outVelocity = initVelocity();
-        outLifetime = inLifetime;
+        outLifetime = initLifetime();
     } else {
         outTexCoord = inTexCoord;
         outVelocity = inVelocity;
-        outLifetime = inLifetime;
+        outLifetime = max(0.0, inLifetime - deltaTime);
     }
     outPosition = inPosition + inVelocity * deltaTime;
     outSeed = inSeed;
 
     vTexCoord = outTexCoord;
-    alpha = 1.0;
-    gl_Position = vec4(inPosition, 0., 1.);
+    alpha = max(0.0, min(0.3, outLifetime) / 0.3);
+    gl_Position = vec4(inPosition, 0.0, 1.0);
 }
