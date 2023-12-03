@@ -71,7 +71,6 @@ public class MessageDeletionOverlay extends TextureView {
      3. Change ease-in
      4. Artifacts
      5. Overlay position
-     6. Array allocation
      7. Handle resize
      */
     public void launchAnimation(List<View> views) {
@@ -285,6 +284,7 @@ public class MessageDeletionOverlay extends TextureView {
         private int timeHandle = 0;
 
         private static final int PARTICLE_SIZE = 10;
+        private static final int HALF_SIZE = PARTICLE_SIZE / 2;
         private static final float MAX_SPEED = 1700f;
         private static final float UP_ACCELERATION = 300f;
         private static final float EASE_IN_DURATION = 0.8f;
@@ -433,15 +433,18 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private float time = Float.MAX_VALUE;
+        private final Random random = new Random();
 
         private static final int S_FLOAT = 4;
-        private static final int SIZE_POSITION = 8;
-        private static final int SIZE_TEX_COORD = 8;
-        private static final int SIZE_VELOCITY = 8;
-        private static final int SIZE_LIFETIME = 4;
-        private static final int SIZE_SEED = 4;
-        private static final int SIZE_X_SHARE = 4;
-        private static final int STRIDE = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
+        private static final int SIZE_POSITION = 2;
+        private static final int SIZE_TEX_COORD = 2;
+        private static final int SIZE_VELOCITY = 2;
+        private static final int SIZE_LIFETIME = 1;
+        private static final int SIZE_SEED = 1;
+        private static final int SIZE_X_SHARE = 1;
+        private static final int ATTRIBUTES_PER_VERTEX = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
+        private static final int VERTICES_PER_PARTICLE = 6;
+        private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
 
         private void drawFrame(float deltaTime) {
             if (!egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
@@ -594,47 +597,62 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private FloatBuffer generateAttributes(ViewFrame[] frames) {
-            final int pointCount = 6;
-            final int coordinateCount = 2;
-            final int size = ((width * height) / PARTICLE_SIZE) * coordinateCount * pointCount;
+            final int particleCount = calculateParticleCount(frames);
+            attributeCount = particleCount * VERTICES_PER_PARTICLE * ATTRIBUTES_PER_VERTEX;
             final int halfSize = PARTICLE_SIZE / 2;
             int i = 0;
-            final float[] tempArray = new float[size]; // TODO pre-calculate the size
-            final Random random = new Random();
+            final float[] attributes = new float[attributeCount];
             for (ViewFrame frame : frames) {
                 final int top = frame.location.y;
-                final int bottom = top + frame.size.y + PARTICLE_SIZE;
+                final int bottom = top + frame.size.y + halfSize;
                 final int left = frame.location.x;
-                final int right = left + frame.size.x + PARTICLE_SIZE;
+                final int right = left + frame.size.x + halfSize;
                 for (int y = top + halfSize; y < bottom; y += PARTICLE_SIZE) {
                     for (int x = left + halfSize; x < right; x += PARTICLE_SIZE) {
                         final float seed = random.nextFloat(); // TODO Test performance
                         // Top left triangle
                         // Top left
-                        i = initVertex(tempArray, i, x, y, halfSize, -1, 1, seed);
+                        i = initVertex(attributes, i, x, y, -1, 1, seed);
                         // Bottom left
-                        i = initVertex(tempArray, i, x, y, halfSize, -1, -1, seed);
+                        i = initVertex(attributes, i, x, y, -1, -1, seed);
                         // Top right
-                        i = initVertex(tempArray, i, x, y, halfSize, 1, 1, seed);
+                        i = initVertex(attributes, i, x, y, 1, 1, seed);
                         // Bottom right triangle
                         // Bottom right
-                        i = initVertex(tempArray, i, x, y, halfSize, 1, -1, seed);
+                        i = initVertex(attributes, i, x, y, 1, -1, seed);
                         // Top right
-                        i = initVertex(tempArray, i, x, y, halfSize, 1, 1, seed);
+                        i = initVertex(attributes, i, x, y, 1, 1, seed);
                         // Bottom left
-                        i = initVertex(tempArray, i, x, y, halfSize, -1, -1, seed);
+                        i = initVertex(attributes, i, x, y, -1, -1, seed);
                     }
                 }
             }
-            attributeCount = i;
-            final float[] resultArray = new float[attributeCount];
-            System.arraycopy(tempArray, 0, resultArray, 0, attributeCount);
-            ByteBuffer vertexByteBuffer = ByteBuffer.allocateDirect(resultArray.length * 4);
+            ByteBuffer vertexByteBuffer = ByteBuffer.allocateDirect(attributes.length * S_FLOAT);
             vertexByteBuffer.order(ByteOrder.nativeOrder());
             FloatBuffer vertexBuffer = vertexByteBuffer.asFloatBuffer();
-            vertexBuffer.put(resultArray);
+            vertexBuffer.put(attributes);
             vertexBuffer.position(0);
             return vertexBuffer;
+        }
+
+        private int calculateParticleCount(ViewFrame frame) {
+            int xCount = frame.size.x / PARTICLE_SIZE;
+            if (frame.size.x % PARTICLE_SIZE != 0) {
+                xCount++;
+            }
+            int yCount = frame.size.y / PARTICLE_SIZE;
+            if (frame.size.y % PARTICLE_SIZE != 0) {
+                yCount++;
+            }
+            return xCount * yCount;
+        }
+
+        private int calculateParticleCount(ViewFrame[] frames) {
+            int count = 0;
+            for (ViewFrame frame : frames) {
+                count += calculateParticleCount(frame);
+            }
+            return count;
         }
 
         private int initVertex(
@@ -642,14 +660,13 @@ public class MessageDeletionOverlay extends TextureView {
                 int index,
                 int x,
                 int y,
-                int halfSize,
                 int xSign,
                 int ySign,
                 float seed
         ) {
             // Position
-            vertices[index++] = toGlX(x + xSign * halfSize);
-            vertices[index++] = toGlY(y + ySign * halfSize);
+            vertices[index++] = toGlX(x + xSign * HALF_SIZE);
+            vertices[index++] = toGlY(y + ySign * HALF_SIZE);
             // Texture
             vertices[index++] = 0f;
             vertices[index++] = 0f;
