@@ -72,8 +72,7 @@ public class MessageDeletionOverlay extends TextureView {
      4. Artifacts
      5. Overlay position
      6. Array allocation
-     7. Generate last row/col of particles
-     8. Handle resize
+     7. Handle resize
      */
     public void launchAnimation(List<View> views) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
@@ -604,9 +603,9 @@ public class MessageDeletionOverlay extends TextureView {
             final Random random = new Random();
             for (ViewFrame frame : frames) {
                 final int top = frame.location.y;
-                final int bottom = top + frame.size.y;
+                final int bottom = top + frame.size.y + PARTICLE_SIZE;
                 final int left = frame.location.x;
-                final int right = left + frame.size.x;
+                final int right = left + frame.size.x + PARTICLE_SIZE;
                 for (int y = top + halfSize; y < bottom; y += PARTICLE_SIZE) {
                     for (int x = left + halfSize; x < right; x += PARTICLE_SIZE) {
                         final float seed = random.nextFloat(); // TODO Test performance
