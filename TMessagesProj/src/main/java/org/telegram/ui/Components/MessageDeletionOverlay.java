@@ -288,8 +288,7 @@ public class MessageDeletionOverlay extends TextureView {
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
 
-        private static final int PARTICLE_SIZE = 4;
-        private static final int HALF_SIZE = PARTICLE_SIZE / 2;
+        private static final int PARTICLE_SIZE = 6;
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 2;
         private static final int SIZE_TEX_COORD = 2;
@@ -488,17 +487,17 @@ public class MessageDeletionOverlay extends TextureView {
             int offset = 0;
             int index = 0;
             // Position
-            offset = bindFloatAttribute(index++, 2, offset);
+            offset = bindFloatAttribute(index++, SIZE_POSITION, offset);
             // Texture
-            offset = bindFloatAttribute(index++, 2, offset);
+            offset = bindFloatAttribute(index++, SIZE_TEX_COORD, offset);
             // Velocity
-            offset = bindFloatAttribute(index++, 2, offset);
+            offset = bindFloatAttribute(index++, SIZE_VELOCITY, offset);
             // Lifetime
-            offset = bindFloatAttribute(index++, 1, offset);
+            offset = bindFloatAttribute(index++, SIZE_LIFETIME, offset);
             // Seed
-            offset = bindFloatAttribute(index++, 1, offset);
+            offset = bindFloatAttribute(index++, SIZE_SEED, offset);
             // X Share
-            offset = bindFloatAttribute(index++, 1, offset);
+            offset = bindFloatAttribute(index++, SIZE_X_SHARE, offset);
         }
 
         private int bindFloatAttribute(int index, int size, int offset) {
