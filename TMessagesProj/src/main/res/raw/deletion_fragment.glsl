@@ -12,9 +12,5 @@ uniform float time;
 
 void main() {
     vec4 color = texture(uTexture, vTexCoord);
-    if (color.a == 0.0) {
-        fragColor = color;
-    } else {
-        fragColor = vec4(color.rgb, alpha);
-    }
+    fragColor = vec4(color.rgb, color.a * alpha);
 }

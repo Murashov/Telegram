@@ -67,12 +67,13 @@ public class MessageDeletionOverlay extends TextureView {
     /*
      TODO:
      1. Large bitmap crash
-     2. Black border
+     2. Sometime animation just doesn't work
      3. Change ease-in
      4. Artifacts
      5. Overlay position
      6. Array allocation
      7. Generate last row/col of particles
+     8. Handle resize
      */
     public void launchAnimation(List<View> views) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
