@@ -145,8 +145,10 @@ public class MessageDeletionOverlay extends TextureView {
     }
 
     private static class AnimationConfig {
-        @NonNull public final Bitmap bitmap;
-        @NonNull public final ViewFrame[] frames;
+        @NonNull
+        public final Bitmap bitmap;
+        @NonNull
+        public final ViewFrame[] frames;
 
         private AnimationConfig(@NonNull Bitmap bitmap, @NonNull ViewFrame[] frames) {
             this.bitmap = bitmap;
@@ -155,8 +157,10 @@ public class MessageDeletionOverlay extends TextureView {
     }
 
     private static class ViewFrame {
-        @NonNull public final Point location;
-        @NonNull public final Point size;
+        @NonNull
+        public final Point location;
+        @NonNull
+        public final Point size;
 
         private ViewFrame(@NonNull Point location, @NonNull Point size) {
             this.location = location;
@@ -251,6 +255,9 @@ public class MessageDeletionOverlay extends TextureView {
         private int textureUniformHandle = 0;
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
+
+        private static final float MAX_SPEED = 420f;
+        private static final float UP_ACCELERATION = 120f;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -367,6 +374,16 @@ public class MessageDeletionOverlay extends TextureView {
             textureUniformHandle = GLES31.glGetUniformLocation(drawProgram, "uTexture");
             deltaTimeHandle = GLES31.glGetUniformLocation(drawProgram, "deltaTime");
             timeHandle = GLES31.glGetUniformLocation(drawProgram, "time");
+
+            GLES31.glUniform2f(
+                    GLES31.glGetUniformLocation(drawProgram, "maxSpeed"),
+                    MAX_SPEED / width,
+                    MAX_SPEED / height
+            );
+            GLES31.glUniform1f(
+                    GLES31.glGetUniformLocation(drawProgram, "acceleration"),
+                    UP_ACCELERATION / height
+            );
         }
 
         private float t;

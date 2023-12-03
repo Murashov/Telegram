@@ -16,6 +16,8 @@ out vec2 vTexCoord;
 out float alpha;
 
 uniform float deltaTime;
+uniform vec2 maxSpeed;
+uniform float acceleration;
 
 float rand(vec2 n) {
     return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 4375.5453);
@@ -23,8 +25,9 @@ float rand(vec2 n) {
 
 vec2 initVelocity() {
     float direction = rand(vec2(inSeed * 2.31, inSeed + 14.145)) * (3.14159265 * 2.0);
-    float velocity = (0.1 + rand(vec2(inSeed / 61.2, inSeed - 1.22)) * (0.2 - 0.1)) * 1.0; //420
-    return vec2(cos(direction) * velocity, sin(direction) * velocity);
+    float velocityValue = (0.1 + rand(vec2(inSeed / 61.2, inSeed - 1.22)) * (0.2 - 0.1));
+    vec2 velocity = vec2(velocityValue * maxSpeed.x, velocityValue * maxSpeed.y);
+    return vec2(cos(direction) * velocity.x, sin(direction) * velocity.y);
 }
 
 float initLifetime() {
@@ -40,7 +43,7 @@ void main() {
         outLifetime = initLifetime();
     } else {
         outTexCoord = inTexCoord;
-        outVelocity = inVelocity;
+        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration);
         outLifetime = max(0.0, inLifetime - deltaTime);
     }
     outPosition = inPosition + inVelocity * deltaTime;
