@@ -5,12 +5,14 @@ layout(location = 1) in vec2 inTexCoord;
 layout(location = 2) in vec2 inVelocity;
 layout(location = 3) in float inLifetime;
 layout(location = 4) in float inSeed;
+layout(location = 5) in float inXShare;
 
 out vec2 outPosition;
 out vec2 outTexCoord;
 out vec2 outVelocity;
 out float outLifetime;
 out float outSeed;
+out float outXShare;
 
 out vec2 vTexCoord;
 out float alpha;
@@ -18,6 +20,9 @@ out float alpha;
 uniform float deltaTime;
 uniform vec2 maxSpeed;
 uniform float acceleration;
+uniform float easeInDuration;
+uniform float time;
+uniform float animationDuration;
 
 float rand(vec2 n) {
     return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 4375.5453);
@@ -36,18 +41,39 @@ float initLifetime() {
     return min + rand(vec2(inSeed - 1.2, inSeed * 153.5)) * (max - min);
 }
 
+float calculateFraction() {
+    float fraction = max(0.0, min(easeInDuration, time)) / easeInDuration;
+    if (fraction < inXShare) {
+        return 0.0;
+    } else {
+        return 1.0;
+    }
+//    float windowSize = 0.8;
+//    float effectiveT = inXShare;
+//    float windowStartOffset = -windowSize;
+//    float windowEndOffset = 1.0;
+//
+//    float windowPosition = (1.0 - fraction) * windowStartOffset + fraction * windowEndOffset;
+//    float windowT = max(0.0, min(windowSize, effectiveT - windowPosition)) / windowSize;
+//    float localT = 1.0 - effectiveT;
+//
+//    return windowT;
+}
+
 void main() {
+    float particleFraction = calculateFraction();
     if (inVelocity.xy == vec2(0.0, 0.0) && inTexCoord == vec2(0.0, 0.0)) { // TODO change check
         outTexCoord = vec2(inPosition.x / 2.0 + 0.5, -inPosition.y / 2.0 + 0.5);
         outVelocity = initVelocity();
         outLifetime = initLifetime();
     } else {
         outTexCoord = inTexCoord;
-        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration);
-        outLifetime = max(0.0, inLifetime - deltaTime);
+        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration) * particleFraction;
+        outLifetime = max(0.0, inLifetime - deltaTime * particleFraction);
     }
-    outPosition = inPosition + inVelocity * deltaTime;
+    outPosition = inPosition + inVelocity * deltaTime * particleFraction;
     outSeed = inSeed;
+    outXShare = inXShare;
 
     vTexCoord = outTexCoord;
     alpha = max(0.0, min(0.3, outLifetime) / 0.3);

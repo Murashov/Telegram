@@ -256,8 +256,8 @@ public class MessageDeletionOverlay extends TextureView {
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
 
-        private static final float MAX_SPEED = 420f;
-        private static final float UP_ACCELERATION = 120f;
+        private static final float MAX_SPEED = 1700f;
+        private static final float UP_ACCELERATION = 300f;
 
         private void init() {
             egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
@@ -348,7 +348,8 @@ public class MessageDeletionOverlay extends TextureView {
                     "outTexCoord",
                     "outVelocity",
                     "outLifetime",
-                    "outSeed"
+                    "outSeed",
+                    "outXShare"
             };
             GLES31.glTransformFeedbackVaryings(drawProgram, feedbackVaryings, GLES31.GL_INTERLEAVED_ATTRIBS);
 
@@ -384,6 +385,14 @@ public class MessageDeletionOverlay extends TextureView {
                     GLES31.glGetUniformLocation(drawProgram, "acceleration"),
                     UP_ACCELERATION / height
             );
+            GLES31.glUniform1f(
+                    GLES31.glGetUniformLocation(drawProgram, "easeInDuration"),
+                    0.8f
+            );
+            GLES31.glUniform1f(
+                    GLES31.glGetUniformLocation(drawProgram, "animationDuration"),
+                    4f
+            );
         }
 
         private float t;
@@ -394,7 +403,8 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int SIZE_VELOCITY = 8;
         private static final int SIZE_LIFETIME = 4;
         private static final int SIZE_SEED = 4;
-        private static final int STRIDE = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED;
+        private static final int SIZE_X_SHARE = 4;
+        private static final int STRIDE = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
 
         private void drawFrame(float deltaTime) {
             if (!egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
@@ -442,6 +452,8 @@ public class MessageDeletionOverlay extends TextureView {
             // Lifetime
             offset = bindFloatAttribute(index++, 1, offset);
             // Seed
+            offset = bindFloatAttribute(index++, 1, offset);
+            // X Share
             offset = bindFloatAttribute(index++, 1, offset);
         }
 
@@ -617,6 +629,8 @@ public class MessageDeletionOverlay extends TextureView {
             vertices[index++] = 0f;
             // Seed
             vertices[index++] = seed;
+            // X Share
+            vertices[index++] = x / (float) width;
             return index;
         }
 
