@@ -66,13 +66,14 @@ public class MessageDeletionOverlay extends TextureView {
 
     /*
      TODO:
-     Sometime animation just doesn't work
      Large bitmap crash
      Artifacts
      Change ease-in
      Overlay position
      Test scheduling animation while one is already running
      Handle resize
+     Only play on deletion
+     Handle large size
      */
     public void launchAnimation(List<View> views) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
@@ -276,6 +277,9 @@ public class MessageDeletionOverlay extends TextureView {
         private EGLSurface eglSurface;
         private EGLContext eglContext;
 
+        private float time = Float.MAX_VALUE;
+        private final Random random = new Random();
+
         private int drawProgram;
         private int currentBuffer = 0;
         private int textureId = 0;
@@ -284,8 +288,18 @@ public class MessageDeletionOverlay extends TextureView {
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
 
-        private static final int PARTICLE_SIZE = 10;
+        private static final int PARTICLE_SIZE = 6;
         private static final int HALF_SIZE = PARTICLE_SIZE / 2;
+        private static final int S_FLOAT = 4;
+        private static final int SIZE_POSITION = 2;
+        private static final int SIZE_TEX_COORD = 2;
+        private static final int SIZE_VELOCITY = 2;
+        private static final int SIZE_LIFETIME = 1;
+        private static final int SIZE_SEED = 1;
+        private static final int SIZE_X_SHARE = 1;
+        private static final int ATTRIBUTES_PER_VERTEX = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
+        private static final int VERTICES_PER_PARTICLE = 6;
+        private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
         private static final float MAX_SPEED = 1700f;
         private static final float UP_ACCELERATION = 300f;
         private static final float EASE_IN_DURATION = 0.8f;
@@ -433,20 +447,6 @@ public class MessageDeletionOverlay extends TextureView {
             );
         }
 
-        private float time = Float.MAX_VALUE;
-        private final Random random = new Random();
-
-        private static final int S_FLOAT = 4;
-        private static final int SIZE_POSITION = 2;
-        private static final int SIZE_TEX_COORD = 2;
-        private static final int SIZE_VELOCITY = 2;
-        private static final int SIZE_LIFETIME = 1;
-        private static final int SIZE_SEED = 1;
-        private static final int SIZE_X_SHARE = 1;
-        private static final int ATTRIBUTES_PER_VERTEX = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
-        private static final int VERTICES_PER_PARTICLE = 6;
-        private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
-
         private void drawFrame(float deltaTime) {
             if (!egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
                 running = false;
@@ -578,12 +578,10 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private void genParticlesData(ViewFrame[] frames) {
-            if (particlesData != null) {
-                GLES31.glDeleteBuffers(2, particlesData, 0);
+            if (particlesData == null) {
+                particlesData = new int[2];
+                GLES31.glGenBuffers(2, particlesData, 0);
             }
-
-            particlesData = new int[2];
-            GLES31.glGenBuffers(2, particlesData, 0);
 
             final FloatBuffer attributes = generateAttributes(frames);
             final int size = attributes.capacity() * S_FLOAT;
@@ -594,6 +592,7 @@ public class MessageDeletionOverlay extends TextureView {
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[1]);
             GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, null, GLES31.GL_DYNAMIC_DRAW);
 
+            currentBuffer = 0;
             checkGlErrors();
         }
 
