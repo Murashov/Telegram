@@ -215,24 +215,24 @@ public class MessageDeletionOverlay extends TextureView {
             long lastTime = System.nanoTime();
             while (running) {
                 final long now = System.nanoTime();
-                double Δt = (now - lastTime) / 1_000_000_000.;
+                double deltaTime = (now - lastTime) / 1_000_000_000.;
                 lastTime = now;
 
-                if (Δt < MIN_DELTA) {
-                    double wait = MIN_DELTA - Δt;
+                if (deltaTime < MIN_DELTA) {
+                    double wait = MIN_DELTA - deltaTime;
                     try {
                         long milli = (long) (wait * 1000L);
                         int nano = (int) ((wait - milli / 1000.) * 1_000_000_000);
                         sleep(milli, nano);
                     } catch (Exception ignore) {
                     }
-                    Δt = MIN_DELTA;
-                } else if (Δt > MAX_DELTA) {
-                    Δt = MAX_DELTA;
+                    deltaTime = MIN_DELTA;
+                } else if (deltaTime > MAX_DELTA) {
+                    deltaTime = MAX_DELTA;
                 }
 
                 checkResize();
-                drawFrame((float) Δt);
+                drawFrame((float) deltaTime);
             }
             die();
         }
@@ -373,7 +373,6 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private float t;
-        private final float timeScale = .65f;
 
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 8;
@@ -383,13 +382,13 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int SIZE_SEED = 4;
         private static final int STRIDE = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED;
 
-        private void drawFrame(float Δt) {
+        private void drawFrame(float deltaTime) {
             if (!egl.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
                 running = false;
                 return;
             }
 
-            t += Δt * timeScale;
+            t += deltaTime;
             if (t > 1000.f) {
                 t = 0;
             }
@@ -403,7 +402,7 @@ public class MessageDeletionOverlay extends TextureView {
             bindAttributes();
 
             // Uniforms
-            GLES31.glUniform1f(deltaTimeHandle, Δt * timeScale);
+            GLES31.glUniform1f(deltaTimeHandle, deltaTime);
             GLES31.glUniform1f(timeHandle, t);
             if (!isInitialized) {
                 GLES31.glUniform1i(isInitializedHandle, 1);
@@ -455,14 +454,15 @@ public class MessageDeletionOverlay extends TextureView {
                 GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
                 GLES31.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
 
+                int textureUnit = 0;
+                GLES31.glActiveTexture(GLES31.GL_TEXTURE0 + textureUnit);
+                GLES31.glBindTexture(GLES31.GL_TEXTURE_2D, textureId);
+                GLES31.glUniform1i(textureUniformHandle, textureUnit);
+
                 GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
 
                 bitmap.recycle();
             }
-            int textureUnit = 0;
-            GLES31.glActiveTexture(GLES31.GL_TEXTURE0 + textureUnit);
-            GLES31.glBindTexture(GLES31.GL_TEXTURE_2D, textureId);
-            GLES31.glUniform1i(textureUniformHandle, textureUnit);
         }
 
         private void die() {
@@ -528,11 +528,11 @@ public class MessageDeletionOverlay extends TextureView {
             particlesData = new int[2];
             GLES31.glGenBuffers(2, particlesData, 0);
 
-            final FloatBuffer coordinates = generateCoordinates(frames);
-            final int size = coordinates.capacity() * 4;
+            final FloatBuffer attributes = generateAttributes(frames);
+            final int size = attributes.capacity() * S_FLOAT;
 
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[0]);
-            GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, coordinates, GLES31.GL_DYNAMIC_DRAW);
+            GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, attributes, GLES31.GL_DYNAMIC_DRAW);
 
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[1]);
             GLES31.glBufferData(GLES31.GL_ARRAY_BUFFER, size, null, GLES31.GL_DYNAMIC_DRAW);
@@ -540,7 +540,7 @@ public class MessageDeletionOverlay extends TextureView {
             checkGlErrors();
         }
 
-        private FloatBuffer generateCoordinates(ViewFrame[] frames) {
+        private FloatBuffer generateAttributes(ViewFrame[] frames) {
             final int pointCount = 6;
             final int coordinateCount = 2;
             final int size = ((width * height) / step) * coordinateCount * pointCount;
