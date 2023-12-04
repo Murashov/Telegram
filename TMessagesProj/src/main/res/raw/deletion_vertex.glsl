@@ -41,24 +41,24 @@ float initLifetime() {
     return minLifetime + rand(vec2(inSeed - 1.2, inSeed * 153.5)) * (maxLifetime - minLifetime);
 }
 
-float calculateFraction() {
+float calculateEaseIn() {
     float fraction = max(0.0, min(easeInDuration, time)) / easeInDuration;
     float result = min(1.0, fraction / inXShare);
     return result * result * result * result;
 }
 
 void main() {
-    float particleFraction = calculateFraction();
+    float easeInFraction = calculateEaseIn();
     if (inLifetime < 0.0) {
         outTexCoord = vec2(inPosition.x / 2.0 + 0.5, -inPosition.y / 2.0 + 0.5);
         outVelocity = initVelocity();
         outLifetime = initLifetime();
     } else {
         outTexCoord = inTexCoord;
-        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration) * particleFraction;
-        outLifetime = max(0.0, inLifetime - deltaTime * particleFraction);
+        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration) * easeInFraction;
+        outLifetime = max(0.0, inLifetime - deltaTime * easeInFraction);
     }
-    outPosition = inPosition + inVelocity * deltaTime * particleFraction;
+    outPosition = inPosition + inVelocity * deltaTime * easeInFraction;
     outSeed = inSeed;
     outXShare = inXShare;
 

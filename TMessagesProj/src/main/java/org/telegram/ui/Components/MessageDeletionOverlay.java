@@ -26,6 +26,7 @@ import org.telegram.ui.Cells.ChatMessageCell;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -62,7 +63,8 @@ public class MessageDeletionOverlay extends TextureView {
 
     /*
      TODO:
-     Handle resize
+     Optimize for low end devices
+     Draw group background
      */
     public void launchAnimation(List<ChatMessageCell> cells) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
@@ -72,9 +74,8 @@ public class MessageDeletionOverlay extends TextureView {
         Canvas canvas = new Canvas(atlas);
         int[] myLocation = new int[2];
         getLocationOnScreen(myLocation);
-        ViewFrame[] frames = new ViewFrame[cells.size()];
-        for (int i = 0; i < cells.size(); i++) {
-            ChatMessageCell cell = cells.get(i);
+        List<ViewFrame> frames = new ArrayList<>(cells.size());
+        for (ChatMessageCell cell : cells) {
             Bitmap bitmap = getViewBitmap(cell);
             if (bitmap == null) {
                 continue;
@@ -82,7 +83,7 @@ public class MessageDeletionOverlay extends TextureView {
             int[] relativeLocation = getRelativeLocation(cell, myLocation);
             int x = relativeLocation[0];
             int y = relativeLocation[1];
-            frames[i] = new ViewFrame(new Point(x, y), new Point(bitmap.getWidth(), bitmap.getHeight()));
+            frames.add(new ViewFrame(new Point(x, y), new Point(bitmap.getWidth(), bitmap.getHeight())));
 
             Bitmap backgroundBitmap = getBackgroundBitmap(cell);
             if (backgroundBitmap != null) {
@@ -95,6 +96,7 @@ public class MessageDeletionOverlay extends TextureView {
         thread.scheduleAnimation(new AnimationConfig(atlas, frames));
     }
 
+    @Nullable
     private Bitmap getBackgroundBitmap(ChatMessageCell cell) {
         if (!cell.drawBackgroundInParent()) {
             return null;
@@ -108,11 +110,16 @@ public class MessageDeletionOverlay extends TextureView {
         return bitmap;
     }
 
+    @Nullable
     private Bitmap getViewBitmap(View view) {
         view.setDrawingCacheEnabled(true);
         view.buildDrawingCache();
-        Bitmap bitmap = Bitmap.createBitmap(view.getDrawingCache());
+        Bitmap cacheBitmap = view.getDrawingCache();
         view.setDrawingCacheEnabled(false);
+        if (cacheBitmap == null) {
+            return null;
+        }
+        Bitmap bitmap = Bitmap.createBitmap(cacheBitmap);
         return bitmap;
     }
 
@@ -158,9 +165,9 @@ public class MessageDeletionOverlay extends TextureView {
         @NonNull
         public final Bitmap bitmap;
         @NonNull
-        public final ViewFrame[] frames;
+        public final List<ViewFrame> frames;
 
-        private AnimationConfig(@NonNull Bitmap bitmap, @NonNull ViewFrame[] frames) {
+        private AnimationConfig(@NonNull Bitmap bitmap, @NonNull List<ViewFrame> frames) {
             this.bitmap = bitmap;
             this.frames = frames;
         }
@@ -582,7 +589,7 @@ public class MessageDeletionOverlay extends TextureView {
             }
         }
 
-        private void genParticlesData(ViewFrame[] frames) {
+        private void genParticlesData(List<ViewFrame> frames) {
             if (particlesData == null) {
                 particlesData = new int[2];
                 GLES31.glGenBuffers(2, particlesData, 0);
@@ -601,7 +608,7 @@ public class MessageDeletionOverlay extends TextureView {
             checkGlErrors();
         }
 
-        private FloatBuffer generateAttributes(ViewFrame[] frames) {
+        private FloatBuffer generateAttributes(List<ViewFrame> frames) {
             particleCount = calculateParticleCount(frames);
             int size = particleCount * VERTICES_PER_PARTICLE * ATTRIBUTES_PER_VERTEX;
             final int halfSize = PARTICLE_SIZE / 2;
@@ -639,7 +646,7 @@ public class MessageDeletionOverlay extends TextureView {
             return xCount * yCount;
         }
 
-        private int calculateParticleCount(ViewFrame[] frames) {
+        private int calculateParticleCount(List<ViewFrame> frames) {
             int count = 0;
             for (ViewFrame frame : frames) {
                 count += calculateParticleCount(frame);
