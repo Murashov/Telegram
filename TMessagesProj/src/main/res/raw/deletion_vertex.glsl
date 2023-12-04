@@ -21,6 +21,8 @@ uniform float deltaTime;
 uniform vec2 maxSpeed;
 uniform float acceleration;
 uniform float easeInDuration;
+uniform float minLifetime;
+uniform float maxLifetime;
 uniform float time;
 uniform float pointSize;
 
@@ -36,9 +38,7 @@ vec2 initVelocity() {
 }
 
 float initLifetime() {
-    float min = 0.7;
-    float max = 1.5;
-    return min + rand(vec2(inSeed - 1.2, inSeed * 153.5)) * (max - min);
+    return minLifetime + rand(vec2(inSeed - 1.2, inSeed * 153.5)) * (maxLifetime - minLifetime);
 }
 
 float calculateFraction() {
@@ -52,7 +52,7 @@ float calculateFraction() {
 
 void main() {
     float particleFraction = calculateFraction();
-    if (inVelocity.xy == vec2(0.0, 0.0) && inTexCoord == vec2(0.0, 0.0)) { // TODO change check
+    if (inLifetime < 0.0) {
         outTexCoord = vec2(inPosition.x / 2.0 + 0.5, -inPosition.y / 2.0 + 0.5);
         outVelocity = initVelocity();
         outLifetime = initLifetime();

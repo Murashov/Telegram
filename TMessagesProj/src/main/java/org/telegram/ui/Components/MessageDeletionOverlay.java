@@ -66,15 +66,13 @@ public class MessageDeletionOverlay extends TextureView {
 
     /*
      TODO:
-     Large bitmap crash
-     Artifacts
-     Change ease-in
-     Overlay position
-     Test scheduling animation while one is already running
      Handle resize
-     Only play on deletion
-     Handle large size
+     Overlay position
+     Recalculate last time on restart
      Handle transparent BG on dark mode
+     Interrupt running animation when scheduling a new one
+     Change ease-in
+     Only play on deletion
      */
     public void launchAnimation(List<View> views) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
@@ -182,7 +180,7 @@ public class MessageDeletionOverlay extends TextureView {
 
     private class AnimationThread extends Thread {
         private volatile boolean running = true;
-        private ConcurrentLinkedQueue<AnimationConfig> animationQueue = new ConcurrentLinkedQueue<>();
+        private final ConcurrentLinkedQueue<AnimationConfig> animationQueue = new ConcurrentLinkedQueue<>();
 
         public final int MAX_FPS;
         private final double MIN_DELTA;
@@ -192,7 +190,6 @@ public class MessageDeletionOverlay extends TextureView {
         private final Object resizeLock = new Object();
         private boolean resize;
         private int width, height;
-        private int attributeCount;
         private int particleCount;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
@@ -239,12 +236,10 @@ public class MessageDeletionOverlay extends TextureView {
                             }
                         }
                         time = 0f;
+                        lastTime = System.nanoTime();
                     }
 
                     final long now = System.nanoTime();
-                    if (lastTime == 0) {
-                        lastTime = now;
-                    }
                     double deltaTime = (now - lastTime) / 1_000_000_000.;
                     lastTime = now;
 
@@ -257,8 +252,6 @@ public class MessageDeletionOverlay extends TextureView {
                         } catch (InterruptedException ignore) {
                         }
                         deltaTime = MIN_DELTA;
-                    } else if (deltaTime > MAX_DELTA) {
-                        deltaTime = MAX_DELTA;
                     }
 
                     time += deltaTime;
@@ -669,7 +662,7 @@ public class MessageDeletionOverlay extends TextureView {
             vertices[index++] = 0f;
             vertices[index++] = 0f;
             // Lifetime
-            vertices[index++] = 0f;
+            vertices[index++] = -1f;
             // Seed
             vertices[index++] = seed;
             // X Share
