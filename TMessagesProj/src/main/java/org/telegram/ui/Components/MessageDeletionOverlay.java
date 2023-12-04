@@ -5,13 +5,11 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Point;
 import android.graphics.SurfaceTexture;
-import android.media.MediaScannerConnection;
 import android.opengl.EGL14;
 import android.opengl.EGLExt;
 import android.opengl.GLES20;
 import android.opengl.GLES31;
 import android.opengl.GLUtils;
-import android.os.Environment;
 import android.util.AttributeSet;
 import android.view.TextureView;
 import android.view.View;
@@ -23,10 +21,8 @@ import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
+import org.telegram.ui.Cells.ChatMessageCell;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -67,43 +63,49 @@ public class MessageDeletionOverlay extends TextureView {
     /*
      TODO:
      Handle resize
-     Recalculate last time on restart
-     Handle transparent BG on dark mode
-     Change ease-in
-     Only play on deletion
      */
-    public void launchAnimation(List<View> views) {
+    public void launchAnimation(List<ChatMessageCell> cells) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
+        if (atlas == null) {
+            return;
+        }
         Canvas canvas = new Canvas(atlas);
         int[] myLocation = new int[2];
         getLocationOnScreen(myLocation);
-        ViewFrame[] frames = new ViewFrame[views.size()];
-        for (int i = 0; i < views.size(); i++) {
-            View view = views.get(i);
-            Bitmap bitmap = getViewBitmap(view);
-            int[] relativeLocation = getRelativeLocation(view, myLocation);
+        ViewFrame[] frames = new ViewFrame[cells.size()];
+        for (int i = 0; i < cells.size(); i++) {
+            ChatMessageCell cell = cells.get(i);
+            Bitmap bitmap = getViewBitmap(cell);
+            if (bitmap == null) {
+                continue;
+            }
+            int[] relativeLocation = getRelativeLocation(cell, myLocation);
             int x = relativeLocation[0];
             int y = relativeLocation[1];
             frames[i] = new ViewFrame(new Point(x, y), new Point(bitmap.getWidth(), bitmap.getHeight()));
+
+            Bitmap backgroundBitmap = getBackgroundBitmap(cell);
+            if (backgroundBitmap != null) {
+                canvas.drawBitmap(backgroundBitmap, x, y, null);
+                backgroundBitmap.recycle();
+            }
             canvas.drawBitmap(bitmap, x, y, null);
             bitmap.recycle();
         }
         thread.scheduleAnimation(new AnimationConfig(atlas, frames));
     }
 
-    private void saveBitmap(Bitmap bitmap) {
-        String filename = "telegram_bitmap.png";
-        File storageDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-        File imageFile = new File(storageDir, filename);
-        try {
-            FileOutputStream fos = new FileOutputStream(imageFile);
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
-            fos.flush();
-            fos.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+    private Bitmap getBackgroundBitmap(ChatMessageCell cell) {
+        if (!cell.drawBackgroundInParent()) {
+            return null;
         }
-        MediaScannerConnection.scanFile(getContext(), new String[]{imageFile.getAbsolutePath()}, null, null);
+        Bitmap bitmap = Bitmap.createBitmap(cell.getWidth(), cell.getHeight(), Bitmap.Config.ARGB_8888);
+        if (bitmap == null) {
+            return null;
+        }
+        Canvas canvas = new Canvas(bitmap);
+        cell.drawBackgroundInternal(canvas, true);
+        return bitmap;
     }
 
     private Bitmap getViewBitmap(View view) {
@@ -294,8 +296,8 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int ATTRIBUTES_PER_VERTEX = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
         private static final int VERTICES_PER_PARTICLE = 1;
         private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
-        private static final float MAX_SPEED = 2500f;
-        private static final float UP_ACCELERATION = 500f;
+        private static final float MAX_SPEED = 2800;
+        private static final float UP_ACCELERATION = 600;
         private static final float EASE_IN_DURATION = 0.8f;
         private static final float MIN_LIFETIME = 0.7f;
         private static final float MAX_LIFETIME = 1.5f;
@@ -575,9 +577,6 @@ public class MessageDeletionOverlay extends TextureView {
             synchronized (resizeLock) {
                 if (resize) {
                     GLES31.glViewport(0, 0, width, height);
-                    // TODO Handle resizing
-//                    this.attributeCount = particlesCount();
-//                    genParticlesData();
                     resize = false;
                 }
             }

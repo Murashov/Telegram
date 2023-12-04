@@ -29843,7 +29843,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
 
         public void animateDeletionForMessageObjects(List<MessageObject> messageObjects) {
             int count = chatListView.getChildCount();
-            List<View> views = new ArrayList<>(messageObjects.size());
+            List<ChatMessageCell> cells = new ArrayList<>(messageObjects.size());
             for (MessageObject messageObject : messageObjects) {
                 for (int i = 0; i < count; i++) {
                     View child = chatListView.getChildAt(i);
@@ -29851,13 +29851,13 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                         ChatMessageCell cell = (ChatMessageCell) child;
                         if (cell.getMessageObject() == messageObject) {
                             Log.i(MessageDeletionOverlay.TAG, cell.toString());
-                            views.add(cell);
+                            cells.add(cell);
                             break;
                         }
                     }
                 }
             }
-            messageDeletionOverlay.launchAnimation(views);
+            messageDeletionOverlay.launchAnimation(cells);
         }
 
         public void invalidateRowWithMessageObject(MessageObject messageObject) {
