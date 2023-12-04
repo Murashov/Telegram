@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Point;
+import android.graphics.PointF;
 import android.graphics.SurfaceTexture;
 import android.opengl.EGL14;
 import android.opengl.EGLExt;
@@ -11,6 +12,7 @@ import android.opengl.GLES20;
 import android.opengl.GLES31;
 import android.opengl.GLUtils;
 import android.util.AttributeSet;
+import android.util.Pair;
 import android.view.TextureView;
 import android.view.View;
 
@@ -21,6 +23,7 @@ import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.Cells.ChatMessageCell;
 
 import java.nio.ByteBuffer;
@@ -112,14 +115,12 @@ public class MessageDeletionOverlay extends TextureView {
 
     @Nullable
     private Bitmap getViewBitmap(View view) {
-        view.setDrawingCacheEnabled(true);
-        view.buildDrawingCache();
-        Bitmap cacheBitmap = view.getDrawingCache();
-        view.setDrawingCacheEnabled(false);
-        if (cacheBitmap == null) {
+        Bitmap bitmap = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
+        if (bitmap == null) {
             return null;
         }
-        Bitmap bitmap = Bitmap.createBitmap(cacheBitmap);
+        Canvas canvas = new Canvas(bitmap);
+        view.draw(canvas);
         return bitmap;
     }
 
@@ -265,6 +266,7 @@ public class MessageDeletionOverlay extends TextureView {
                     time += deltaTime;
                     checkResize();
                     drawFrame((float) deltaTime);
+//                    Log.i(TAG, "Delta time=" + deltaTime);
                 }
             }
         }
@@ -281,8 +283,12 @@ public class MessageDeletionOverlay extends TextureView {
         private EGLSurface eglSurface;
         private EGLContext eglContext;
 
+        private final int visibleSize = Math.max(1, AndroidUtilities.dp2(1f) * 2);
         private float time = Float.MAX_VALUE;
         private final Random random = new Random();
+        private int particleSize = visibleSize;
+        private final PointF localPointSize = new PointF(0f, 0f);
+        private final int maxPointCount = getMaxPointCount();
 
         private int drawProgram;
         private int currentBuffer = 0;
@@ -291,8 +297,10 @@ public class MessageDeletionOverlay extends TextureView {
         private int textureUniformHandle = 0;
         private int deltaTimeHandle = 0;
         private int timeHandle = 0;
+        private int pointSizeHandle = 0;
+        private int localPointSizeHandle = 0;
 
-        private static final int PARTICLE_SIZE = 4;
+        private static final int MAX_POINT_SIZE = 50;
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 2;
         private static final int SIZE_TEX_COORD = 2;
@@ -310,8 +318,20 @@ public class MessageDeletionOverlay extends TextureView {
         private static final float MAX_LIFETIME = 1.5f;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
 
+        private int getMaxPointCount() {
+            switch (SharedConfig.getDevicePerformanceClass()) {
+                case SharedConfig.PERFORMANCE_CLASS_HIGH:
+                    return 5000;
+                case SharedConfig.PERFORMANCE_CLASS_AVERAGE:
+                    return 4000;
+                default:
+                case SharedConfig.PERFORMANCE_CLASS_LOW:
+                    return 3000;
+            }
+        }
+
         private void init() {
-            egl = (EGL10) javax.microedition.khronos.egl.EGLContext.getEGL();
+            egl = (EGL10) EGLContext.getEGL();
 
             eglDisplay = egl.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
             if (eglDisplay == egl.EGL_NO_DISPLAY) {
@@ -425,10 +445,12 @@ public class MessageDeletionOverlay extends TextureView {
             textureUniformHandle = GLES31.glGetUniformLocation(drawProgram, "uTexture");
             deltaTimeHandle = GLES31.glGetUniformLocation(drawProgram, "deltaTime");
             timeHandle = GLES31.glGetUniformLocation(drawProgram, "time");
+            pointSizeHandle = GLES31.glGetUniformLocation(drawProgram, "pointSize");
+            localPointSizeHandle = GLES31.glGetUniformLocation(drawProgram, "localPointSize");
 
             GLES31.glUniform2f(
                     GLES31.glGetUniformLocation(drawProgram, "maxSpeed"),
-                    MAX_SPEED / width,
+                    MAX_SPEED / width, // TODO Handle resize
                     MAX_SPEED / height
             );
             GLES31.glUniform1f(
@@ -448,13 +470,8 @@ public class MessageDeletionOverlay extends TextureView {
                     MAX_LIFETIME
             );
             GLES31.glUniform1f(
-                    GLES31.glGetUniformLocation(drawProgram, "pointSize"),
-                    PARTICLE_SIZE
-            );
-            GLES31.glUniform2f(
-                    GLES31.glGetUniformLocation(drawProgram, "localPointSize"),
-                    PARTICLE_SIZE / (float) width,
-                    PARTICLE_SIZE / (float) height
+                    GLES31.glGetUniformLocation(drawProgram, "visibleSize"),
+                    visibleSize
             );
         }
 
@@ -467,6 +484,8 @@ public class MessageDeletionOverlay extends TextureView {
             // Uniforms
             GLES31.glUniform1f(deltaTimeHandle, deltaTime);
             GLES31.glUniform1f(timeHandle, time);
+            GLES31.glUniform1f(pointSizeHandle, particleSize);
+            GLES31.glUniform2f(localPointSizeHandle, localPointSize.x, localPointSize.y);
 
             GLES31.glBindBuffer(GLES31.GL_ARRAY_BUFFER, particlesData[currentBuffer]);
             bindAttributes();
@@ -609,9 +628,15 @@ public class MessageDeletionOverlay extends TextureView {
         }
 
         private FloatBuffer generateAttributes(List<ViewFrame> frames) {
-            particleCount = calculateParticleCount(frames);
+            final Pair<Integer, Integer> countAndSize = calculateParticleCountAndSize(frames);
+            particleCount = countAndSize.first;
+            particleSize = countAndSize.second;
+            localPointSize.set(particleSize / (float) width, particleSize / (float) height);
+            Log.i(TAG, "Number of particles=" + particleCount);
+            Log.i(TAG, "Particle size=" + particleSize);
+
             int size = particleCount * VERTICES_PER_PARTICLE * ATTRIBUTES_PER_VERTEX;
-            final int halfSize = PARTICLE_SIZE / 2;
+            final int halfSize = particleSize / 2;
             int i = 0;
             final float[] attributes = new float[size];
             for (ViewFrame frame : frames) {
@@ -619,8 +644,8 @@ public class MessageDeletionOverlay extends TextureView {
                 final int bottom = top + frame.size.y + halfSize;
                 final int left = frame.location.x;
                 final int right = left + frame.size.x + halfSize;
-                for (int y = top + halfSize; y < bottom; y += PARTICLE_SIZE) {
-                    for (int x = left + halfSize; x < right; x += PARTICLE_SIZE) {
+                for (int y = top + halfSize; y < bottom; y += particleSize) {
+                    for (int x = left + halfSize; x < right; x += particleSize) {
                         final float seed = random.nextFloat(); // TODO Test performance
                         i = initVertex(attributes, i, x, y, seed);
                     }
@@ -634,24 +659,30 @@ public class MessageDeletionOverlay extends TextureView {
             return vertexBuffer;
         }
 
-        private int calculateParticleCount(ViewFrame frame) {
-            int xCount = frame.size.x / PARTICLE_SIZE;
-            if (frame.size.x % PARTICLE_SIZE != 0) {
+        private int calculateParticleCountAndSize(ViewFrame frame, int particleSize) {
+            int xCount = frame.size.x / particleSize;
+            if (frame.size.x % particleSize != 0) {
                 xCount++;
             }
-            int yCount = frame.size.y / PARTICLE_SIZE;
-            if (frame.size.y % PARTICLE_SIZE != 0) {
+            int yCount = frame.size.y / particleSize;
+            if (frame.size.y % particleSize != 0) {
                 yCount++;
             }
             return xCount * yCount;
         }
 
-        private int calculateParticleCount(List<ViewFrame> frames) {
-            int count = 0;
-            for (ViewFrame frame : frames) {
-                count += calculateParticleCount(frame);
-            }
-            return count;
+        private Pair<Integer, Integer> calculateParticleCountAndSize(List<ViewFrame> frames) {
+            int size = visibleSize - 2;
+            int count;
+            do {
+                count = 0;
+                size += 2;
+                for (ViewFrame frame : frames) {
+                    count += calculateParticleCountAndSize(frame, size);
+                }
+            } while (count > maxPointCount && size < MAX_POINT_SIZE);
+
+            return new Pair<>(count, size);
         }
 
         private int initVertex(

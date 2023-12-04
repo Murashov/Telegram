@@ -25,6 +25,7 @@ uniform float minLifetime;
 uniform float maxLifetime;
 uniform float time;
 uniform float pointSize;
+uniform float visibleSize;
 
 float rand(vec2 n) {
     return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 4375.5453);
@@ -41,29 +42,30 @@ float initLifetime() {
     return minLifetime + rand(vec2(inSeed - 1.2, inSeed * 153.5)) * (maxLifetime - minLifetime);
 }
 
-float calculateEaseIn() {
+float calculateEaseInPhase() {
     float fraction = max(0.0, min(easeInDuration, time)) / easeInDuration;
     float result = min(1.0, fraction / inXShare);
     return result * result * result * result;
 }
 
 void main() {
-    float easeInFraction = calculateEaseIn();
+    float phase = calculateEaseInPhase();
     if (inLifetime < 0.0) {
         outTexCoord = vec2(inPosition.x / 2.0 + 0.5, -inPosition.y / 2.0 + 0.5);
         outVelocity = initVelocity();
         outLifetime = initLifetime();
     } else {
         outTexCoord = inTexCoord;
-        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration) * easeInFraction;
-        outLifetime = max(0.0, inLifetime - deltaTime * easeInFraction);
+        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration) * phase;
+        outLifetime = max(0.0, inLifetime - deltaTime * phase);
     }
-    outPosition = inPosition + inVelocity * deltaTime * easeInFraction;
+    outPosition = inPosition + inVelocity * deltaTime * phase;
     outSeed = inSeed;
     outXShare = inXShare;
 
     vTexCoord = outTexCoord;
     alpha = max(0.0, min(0.3, outLifetime) / 0.3);
-    gl_PointSize = pointSize;
+    float sizeDiff = pointSize - visibleSize;
+    gl_PointSize = pointSize - (sizeDiff * phase);
     gl_Position = vec4(inPosition, 0.0, 1.0);
 }

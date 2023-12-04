@@ -29850,7 +29850,6 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     if (child instanceof ChatMessageCell) {
                         ChatMessageCell cell = (ChatMessageCell) child;
                         if (cell.getMessageObject() == messageObject) {
-                            Log.i(MessageDeletionOverlay.TAG, cell.toString());
                             cells.add(cell);
                             break;
                         }
