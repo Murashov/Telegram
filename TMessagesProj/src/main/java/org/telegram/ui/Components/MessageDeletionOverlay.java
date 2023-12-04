@@ -67,10 +67,8 @@ public class MessageDeletionOverlay extends TextureView {
     /*
      TODO:
      Handle resize
-     Overlay position
      Recalculate last time on restart
      Handle transparent BG on dark mode
-     Interrupt running animation when scheduling a new one
      Change ease-in
      Only play on deletion
      */
@@ -228,13 +226,15 @@ public class MessageDeletionOverlay extends TextureView {
                 long lastTime = 0;
                 while (running) {
                     if (time > ANIMATION_DURATION) {
-                        GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-                        while (!pollBitmap()) {
+                        while (!hasNewAnimation()) {
                             try {
                                 lock.wait();
                             } catch (InterruptedException ignore) {
                             }
                         }
+                    }
+                    if (pollAnimation()) {
+                        GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
                         time = 0f;
                         lastTime = System.nanoTime();
                     }
@@ -242,7 +242,6 @@ public class MessageDeletionOverlay extends TextureView {
                     final long now = System.nanoTime();
                     double deltaTime = (now - lastTime) / 1_000_000_000.;
                     lastTime = now;
-
                     if (deltaTime < MIN_DELTA) {
                         double wait = MIN_DELTA - deltaTime;
                         long milli = (long) (wait * 1000L);
@@ -500,7 +499,7 @@ public class MessageDeletionOverlay extends TextureView {
             return offset + size * S_FLOAT;
         }
 
-        private boolean pollBitmap() {
+        private boolean pollAnimation() {
             AnimationConfig config = animationQueue.poll();
             if (config != null) {
                 genParticlesData(config.frames);
@@ -523,6 +522,10 @@ public class MessageDeletionOverlay extends TextureView {
                 return true;
             }
             return false;
+        }
+
+        private boolean hasNewAnimation() {
+            return !animationQueue.isEmpty();
         }
 
         private void die() {
