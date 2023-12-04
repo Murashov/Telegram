@@ -43,11 +43,8 @@ float initLifetime() {
 
 float calculateFraction() {
     float fraction = max(0.0, min(easeInDuration, time)) / easeInDuration;
-    if (fraction < inXShare) {
-        return 0.0;
-    } else {
-        return 1.0;
-    }
+    float result = min(1.0, fraction / inXShare);
+    return result * result * result * result;
 }
 
 void main() {
