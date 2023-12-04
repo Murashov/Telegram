@@ -23,7 +23,6 @@ import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
-import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.Cells.ChatMessageCell;
 
 import java.nio.ByteBuffer;
@@ -66,8 +65,8 @@ public class MessageDeletionOverlay extends TextureView {
 
     /*
      TODO:
-     Optimize for low end devices
      Draw group background
+     Handle resize
      */
     public void launchAnimation(List<ChatMessageCell> cells) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
@@ -186,14 +185,9 @@ public class MessageDeletionOverlay extends TextureView {
         }
     }
 
-    private class AnimationThread extends Thread {
+    private static class AnimationThread extends Thread {
         private volatile boolean running = true;
         private final ConcurrentLinkedQueue<AnimationConfig> animationQueue = new ConcurrentLinkedQueue<>();
-
-        public final int MAX_FPS;
-        private final double MIN_DELTA;
-        private final double MAX_DELTA;
-
         private final SurfaceTexture surfaceTexture;
         private final Object resizeLock = new Object();
         private boolean resize;
@@ -201,10 +195,6 @@ public class MessageDeletionOverlay extends TextureView {
         private int particleCount;
 
         public AnimationThread(SurfaceTexture surfaceTexture, int width, int height) {
-            MAX_FPS = (int) AndroidUtilities.screenRefreshRate;
-            MIN_DELTA = 1.0 / MAX_FPS;
-            MAX_DELTA = MIN_DELTA * 4;
-
             this.surfaceTexture = surfaceTexture;
             this.width = width;
             this.height = height;
@@ -231,6 +221,8 @@ public class MessageDeletionOverlay extends TextureView {
 
         private final Object lock = new Object();
 
+        private double lastGenerationTime = 0.0;
+
         private void loop() {
             synchronized (lock) {
                 long lastTime = 0;
@@ -252,21 +244,22 @@ public class MessageDeletionOverlay extends TextureView {
                     final long now = System.nanoTime();
                     double deltaTime = (now - lastTime) / 1_000_000_000.;
                     lastTime = now;
-                    if (deltaTime < MIN_DELTA) {
-                        double wait = MIN_DELTA - deltaTime;
-                        long milli = (long) (wait * 1000L);
-                        int nano = (int) ((wait - milli / 1000.) * 1_000_000_000);
-                        try {
-                            lock.wait(milli, nano);
-                        } catch (InterruptedException ignore) {
+                    if (deltaTime > MAX_DELTA) {
+                        double adjustedForGeneration = deltaTime - lastGenerationTime;
+                        if (adjustedForGeneration > MAX_DELTA) {
+                            Log.i(TAG, "Adjust Delta more than max delta:" + adjustedForGeneration);
+                            maxPointCount /= 2;
+                            Log.i(TAG, "Generating buffer capped at " + maxPointCount);
+                            lastGenerationTime = genParticlesData(currentFrames);
+                        } else {
+                            lastGenerationTime = 0.0;
                         }
-                        deltaTime = MIN_DELTA;
                     }
 
                     time += deltaTime;
                     checkResize();
                     drawFrame((float) deltaTime);
-//                    Log.i(TAG, "Delta time=" + deltaTime);
+                    Log.i(TAG, "Delta time=" + deltaTime);
                 }
             }
         }
@@ -288,7 +281,7 @@ public class MessageDeletionOverlay extends TextureView {
         private final Random random = new Random();
         private int particleSize = visibleSize;
         private final PointF localPointSize = new PointF(0f, 0f);
-        private final int maxPointCount = getMaxPointCount();
+        private int maxPointCount = MAX_POINT_COUNT_CEILING;
 
         private int drawProgram;
         private int currentBuffer = 0;
@@ -300,6 +293,9 @@ public class MessageDeletionOverlay extends TextureView {
         private int pointSizeHandle = 0;
         private int localPointSizeHandle = 0;
 
+        private static final int MAX_POINT_COUNT_CEILING = 32768;
+        private static final double MIN_DELTA = 1.0 / AndroidUtilities.screenRefreshRate;
+        private static final double MAX_DELTA = MIN_DELTA * 2f;
         private static final int MAX_POINT_SIZE = 50;
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 2;
@@ -311,24 +307,12 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int ATTRIBUTES_PER_VERTEX = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
         private static final int VERTICES_PER_PARTICLE = 1;
         private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
-        private static final float MAX_SPEED = 2800;
+        private static final float MAX_SPEED = 3000;
         private static final float UP_ACCELERATION = 600;
-        private static final float EASE_IN_DURATION = 0.8f;
+        private static final float EASE_IN_DURATION = 1.2f;
         private static final float MIN_LIFETIME = 0.7f;
         private static final float MAX_LIFETIME = 1.5f;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
-
-        private int getMaxPointCount() {
-            switch (SharedConfig.getDevicePerformanceClass()) {
-                case SharedConfig.PERFORMANCE_CLASS_HIGH:
-                    return 5000;
-                case SharedConfig.PERFORMANCE_CLASS_AVERAGE:
-                    return 4000;
-                default:
-                case SharedConfig.PERFORMANCE_CLASS_LOW:
-                    return 3000;
-            }
-        }
 
         private void init() {
             egl = (EGL10) EGLContext.getEGL();
@@ -527,10 +511,13 @@ public class MessageDeletionOverlay extends TextureView {
             return offset + size * S_FLOAT;
         }
 
+        private List<ViewFrame> currentFrames;
         private boolean pollAnimation() {
             AnimationConfig config = animationQueue.poll();
             if (config != null) {
-                genParticlesData(config.frames);
+                maxPointCount = MAX_POINT_COUNT_CEILING;
+                currentFrames = config.frames;
+                genParticlesData(currentFrames);
                 Bitmap bitmap = config.bitmap;
 
                 GLES31.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
@@ -608,7 +595,8 @@ public class MessageDeletionOverlay extends TextureView {
             }
         }
 
-        private void genParticlesData(List<ViewFrame> frames) {
+        private double genParticlesData(List<ViewFrame> frames) {
+            long now = System.currentTimeMillis();
             if (particlesData == null) {
                 particlesData = new int[2];
                 GLES31.glGenBuffers(2, particlesData, 0);
@@ -625,6 +613,7 @@ public class MessageDeletionOverlay extends TextureView {
 
             currentBuffer = 0;
             checkGlErrors();
+            return (System.currentTimeMillis() - now) / 1000.0;
         }
 
         private FloatBuffer generateAttributes(List<ViewFrame> frames) {
@@ -646,7 +635,7 @@ public class MessageDeletionOverlay extends TextureView {
                 final int right = left + frame.size.x + halfSize;
                 for (int y = top + halfSize; y < bottom; y += particleSize) {
                     for (int x = left + halfSize; x < right; x += particleSize) {
-                        final float seed = random.nextFloat(); // TODO Test performance
+                        final float seed = random.nextFloat();
                         i = initVertex(attributes, i, x, y, seed);
                     }
                 }
@@ -659,7 +648,7 @@ public class MessageDeletionOverlay extends TextureView {
             return vertexBuffer;
         }
 
-        private int calculateParticleCountAndSize(ViewFrame frame, int particleSize) {
+        private static int calculateParticleCountAndSize(ViewFrame frame, int particleSize) {
             int xCount = frame.size.x / particleSize;
             if (frame.size.x % particleSize != 0) {
                 xCount++;
@@ -720,7 +709,7 @@ public class MessageDeletionOverlay extends TextureView {
             return (yShare - 0.5f) * -2f;
         }
 
-        private void checkGlErrors() {
+        private static void checkGlErrors() {
             int err;
             while ((err = GLES31.glGetError()) != GLES31.GL_NO_ERROR) {
                 Log.e(TAG, "gles error " + err);
