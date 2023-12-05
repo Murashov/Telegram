@@ -45,7 +45,7 @@ float initLifetime() {
 float calculateEaseInPhase() {
     float fraction = max(0.0, min(easeInDuration, time)) / easeInDuration;
     float result = min(1.0, fraction / inXShare);
-    return result * result * result * result;
+    return result * result * result * result * result;
 }
 
 void main() {

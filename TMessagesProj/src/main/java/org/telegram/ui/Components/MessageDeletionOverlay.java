@@ -327,9 +327,9 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
         private static final float MAX_SPEED = 3000;
         private static final float UP_ACCELERATION = 600;
-        private static final float EASE_IN_DURATION = 1.2f;
-        private static final float MIN_LIFETIME = 0.7f;
-        private static final float MAX_LIFETIME = 1.5f;
+        private static final float EASE_IN_DURATION = 1.0f;
+        private static final float MIN_LIFETIME = 0.5f;
+        private static final float MAX_LIFETIME = 1.3f;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
 
         private static int getMaxPointCountCeiling() {
