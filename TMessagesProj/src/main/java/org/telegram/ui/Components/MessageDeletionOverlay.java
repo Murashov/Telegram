@@ -12,14 +12,13 @@ import android.opengl.GLES20;
 import android.opengl.GLES31;
 import android.opengl.GLUtils;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.Pair;
 import android.view.TextureView;
 import android.view.View;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-
-import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
@@ -85,7 +84,7 @@ public class MessageDeletionOverlay extends TextureView {
         getLocationOnScreen(myLocation);
         List<ViewFrame> frames = new ArrayList<>(cells.size());
         for (ChatMessageCell cell : cells) {
-            Bitmap bitmap = getViewBitmap(cell);
+            Bitmap bitmap = getCellBitmap(cell);
             if (bitmap == null) {
                 continue;
             }
@@ -94,11 +93,6 @@ public class MessageDeletionOverlay extends TextureView {
             int y = relativeLocation[1];
             frames.add(new ViewFrame(new Point(x, y), new Point(bitmap.getWidth(), bitmap.getHeight())));
 
-            Bitmap backgroundBitmap = getBackgroundBitmap(cell);
-            if (backgroundBitmap != null) {
-                canvas.drawBitmap(backgroundBitmap, x, y, null);
-                backgroundBitmap.recycle();
-            }
             canvas.drawBitmap(bitmap, x, y, null);
             bitmap.recycle();
         }
@@ -106,27 +100,16 @@ public class MessageDeletionOverlay extends TextureView {
     }
 
     @Nullable
-    private Bitmap getBackgroundBitmap(ChatMessageCell cell) {
-        if (!cell.drawBackgroundInParent()) {
-            return null;
-        }
+    private Bitmap getCellBitmap(ChatMessageCell cell) {
         Bitmap bitmap = Bitmap.createBitmap(cell.getWidth(), cell.getHeight(), Bitmap.Config.ARGB_8888);
         if (bitmap == null) {
             return null;
         }
         Canvas canvas = new Canvas(bitmap);
-        cell.drawBackgroundInternal(canvas, true);
-        return bitmap;
-    }
-
-    @Nullable
-    private Bitmap getViewBitmap(View view) {
-        Bitmap bitmap = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
-        if (bitmap == null) {
-            return null;
+        if (cell.drawBackgroundInParent()) {
+            cell.drawBackgroundInternal(canvas, true);
         }
-        Canvas canvas = new Canvas(bitmap);
-        view.draw(canvas);
+        cell.draw(canvas);
         return bitmap;
     }
 
