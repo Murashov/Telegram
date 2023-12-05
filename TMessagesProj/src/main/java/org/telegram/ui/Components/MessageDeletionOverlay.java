@@ -73,7 +73,6 @@ public class MessageDeletionOverlay extends TextureView {
     /*
      TODO:
      Check android version
-     Handle resize
      Draw group background
      */
     public void launchAnimation(List<ChatMessageCell> cells) {
@@ -331,6 +330,8 @@ public class MessageDeletionOverlay extends TextureView {
         private int timeHandle = 0;
         private int pointSizeHandle = 0;
         private int localPointSizeHandle = 0;
+        private int maxSpeedHandle = 0;
+        private int accelerationHandle = 0;
 
         private static final double MIN_DELTA = 1.0 / AndroidUtilities.screenRefreshRate;
         private static final double MAX_DELTA = MIN_DELTA * 2f;
@@ -482,16 +483,11 @@ public class MessageDeletionOverlay extends TextureView {
             timeHandle = GLES31.glGetUniformLocation(drawProgram, "time");
             pointSizeHandle = GLES31.glGetUniformLocation(drawProgram, "pointSize");
             localPointSizeHandle = GLES31.glGetUniformLocation(drawProgram, "localPointSize");
+            maxSpeedHandle = GLES31.glGetUniformLocation(drawProgram, "maxSpeed");
+            accelerationHandle = GLES31.glGetUniformLocation(drawProgram, "acceleration");
 
-            GLES31.glUniform2f(
-                    GLES31.glGetUniformLocation(drawProgram, "maxSpeed"),
-                    MAX_SPEED / width, // TODO Handle resize
-                    MAX_SPEED / height
-            );
-            GLES31.glUniform1f(
-                    GLES31.glGetUniformLocation(drawProgram, "acceleration"),
-                    UP_ACCELERATION / height
-            );
+            GLES31.glUniform2f(maxSpeedHandle, MAX_SPEED / width, MAX_SPEED / height);
+            GLES31.glUniform1f(accelerationHandle, UP_ACCELERATION / height);
             GLES31.glUniform1f(
                     GLES31.glGetUniformLocation(drawProgram, "easeInDuration"),
                     EASE_IN_DURATION
@@ -641,6 +637,8 @@ public class MessageDeletionOverlay extends TextureView {
             synchronized (resizeLock) {
                 if (resize) {
                     GLES31.glViewport(0, 0, width, height);
+                    GLES31.glUniform2f(maxSpeedHandle, MAX_SPEED / width, MAX_SPEED / height);
+                    GLES31.glUniform1f(accelerationHandle, UP_ACCELERATION / height);
                     resize = false;
                 }
             }
