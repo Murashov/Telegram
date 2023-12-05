@@ -72,9 +72,9 @@ public class MessageDeletionOverlay extends TextureView {
 
     /*
      TODO:
-     Handle onPause
-     Draw group background
+     Check android version
      Handle resize
+     Draw group background
      */
     public void launchAnimation(List<ChatMessageCell> cells) {
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
@@ -237,12 +237,11 @@ public class MessageDeletionOverlay extends TextureView {
                 long lastTime = 0;
                 while (running) {
                     if (shouldStop) {
-//                        Log.i(TAG, "Paused");
+                        Log.i(TAG, "Stopped");
                         time = Float.MAX_VALUE;
-                        shouldStop = false;
                     }
-
                     if (time > ANIMATION_DURATION) {
+                        Log.i(TAG, "Clearing screen. Time=" + time);
                         GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
                         egl.eglSwapBuffers(eglDisplay, eglSurface);
                         while (!hasNewAnimation()) {
@@ -251,8 +250,10 @@ public class MessageDeletionOverlay extends TextureView {
                             } catch (InterruptedException ignore) {
                             }
                         }
+                        shouldStop = false;
                     }
                     if (pollAnimation()) {
+                        Log.i(TAG, "New animation scheduled");
                         time = 0f;
                         lastGenerationTime = 0.0;
                         isAdjustmentPhase = true;
@@ -277,12 +278,12 @@ public class MessageDeletionOverlay extends TextureView {
                     } else if (deltaTime > MAX_DELTA && isAdjustmentPhase) {
                         double adjustedForGeneration = deltaTime - lastGenerationTime;
                         if (adjustedForGeneration > MAX_DELTA && particleSize < maxPointSize) {
-//                            Log.i(TAG, "Adjusted Delta more than max delta:" + adjustedForGeneration);
+                            Log.i(TAG, "Adjusted Delta more than max delta:" + adjustedForGeneration);
                             maxPointCount = (int) (particleCount / 1.5);
-//                            Log.i(TAG, "Generating buffer capped at " + maxPointCount);
+                            Log.i(TAG, "Generating buffer capped at " + maxPointCount);
                             lastGenerationTime = genParticlesData(currentFrames);
                         } else {
-//                            Log.i(TAG, "Adjustment phase finished");
+                            Log.i(TAG, "Adjustment phase finished");
                             lastGenerationTime = 0.0;
                             isAdjustmentPhase = false;
                         }
