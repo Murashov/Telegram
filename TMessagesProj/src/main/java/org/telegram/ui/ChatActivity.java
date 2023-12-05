@@ -5727,7 +5727,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
 
         contentView.addView(chatListView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        contentView.addView(messageDeletionOverlay = new MessageDeletionOverlay(context), LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        if (MessageDeletionOverlay.isSupported()) {
+            contentView.addView(messageDeletionOverlay = new MessageDeletionOverlay(context), LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        }
 
         selectionReactionsOverlay = new ChatSelectionReactionMenuOverlay(this, context);
         contentView.addView(selectionReactionsOverlay, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));

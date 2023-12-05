@@ -11,12 +11,14 @@ import android.opengl.EGLExt;
 import android.opengl.GLES20;
 import android.opengl.GLES31;
 import android.opengl.GLUtils;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.Pair;
 import android.view.TextureView;
 import android.view.View;
 
+import androidx.annotation.ChecksSdkIntAtLeast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -64,6 +66,11 @@ public class MessageDeletionOverlay extends TextureView {
         }
     }
 
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.LOLLIPOP)
+    public static boolean isSupported() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
+    }
+
     private void init() {
         setSurfaceTextureListener(createSurfaceListener());
         setOpaque(false);
@@ -71,7 +78,6 @@ public class MessageDeletionOverlay extends TextureView {
 
     /*
      TODO:
-     Check android version
      Draw group background
      */
     public void launchAnimation(List<ChatMessageCell> cells) {

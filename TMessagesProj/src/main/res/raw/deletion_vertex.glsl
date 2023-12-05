@@ -56,7 +56,7 @@ void main() {
         outLifetime = initLifetime();
     } else {
         outTexCoord = inTexCoord;
-        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration) * phase;
+        outVelocity = inVelocity + vec2(0.0, deltaTime * acceleration * phase);
         outLifetime = max(0.0, inLifetime - deltaTime * phase);
     }
     outPosition = inPosition + inVelocity * deltaTime * phase;
