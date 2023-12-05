@@ -263,6 +263,7 @@ public class MessageDeletionOverlay extends TextureView {
                     final long now = System.nanoTime();
                     double deltaTime = (now - lastTime) / 1_000_000_000.;
                     lastTime = now;
+//                    Log.i(TAG, "Delta time=" + deltaTime);
 
                     if (deltaTime < MIN_DELTA && !isFirstFrame) {
                         double wait = MIN_DELTA - deltaTime;
@@ -273,7 +274,6 @@ public class MessageDeletionOverlay extends TextureView {
                         } catch (InterruptedException ignore) {
                         }
                         deltaTime = MIN_DELTA;
-                        isAdjustmentPhase = false;
                     } else if (deltaTime > MAX_DELTA && isAdjustmentPhase) {
                         double adjustedForGeneration = deltaTime - lastGenerationTime;
                         if (adjustedForGeneration > MAX_DELTA && particleSize < maxPointSize) {
@@ -292,7 +292,6 @@ public class MessageDeletionOverlay extends TextureView {
                     checkResize();
                     drawFrame((float) deltaTime);
                     isFirstFrame = false;
-//                    Log.i(TAG, "Delta time=" + deltaTime);
                 }
             }
         }
