@@ -23,6 +23,7 @@ import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.Cells.ChatMessageCell;
 
 import java.nio.ByteBuffer;
@@ -65,6 +66,7 @@ public class MessageDeletionOverlay extends TextureView {
 
     /*
      TODO:
+     Handle onPause
      Draw group background
      Handle resize
      */
@@ -219,10 +221,6 @@ public class MessageDeletionOverlay extends TextureView {
             running = false;
         }
 
-        private final Object lock = new Object();
-
-        private double lastGenerationTime = 0.0;
-
         private void loop() {
             synchronized (lock) {
                 long lastTime = 0;
@@ -238,27 +236,44 @@ public class MessageDeletionOverlay extends TextureView {
                     if (pollAnimation()) {
                         GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
                         time = 0f;
+                        lastGenerationTime = 0.0;
+                        isAdjustmentPhase = true;
+                        isFirstFrame = true;
                         lastTime = System.nanoTime();
                     }
 
                     final long now = System.nanoTime();
                     double deltaTime = (now - lastTime) / 1_000_000_000.;
                     lastTime = now;
-                    if (deltaTime > MAX_DELTA) {
+
+                    if (deltaTime < MIN_DELTA && !isFirstFrame) {
+                        double wait = MIN_DELTA - deltaTime;
+                        long milli = (long) (wait * 1000L);
+                        int nano = (int) ((wait - milli / 1000.) * 1_000_000_000);
+                        try {
+                            lock.wait(milli, nano);
+                        } catch (InterruptedException ignore) {
+                        }
+                        deltaTime = MIN_DELTA;
+                        isAdjustmentPhase = false;
+                    } else if (deltaTime > MAX_DELTA && isAdjustmentPhase) {
                         double adjustedForGeneration = deltaTime - lastGenerationTime;
-                        if (adjustedForGeneration > MAX_DELTA) {
-                            Log.i(TAG, "Adjust Delta more than max delta:" + adjustedForGeneration);
-                            maxPointCount /= 2;
+                        if (adjustedForGeneration > MAX_DELTA && particleSize < maxPointSize) {
+                            Log.i(TAG, "Adjusted Delta more than max delta:" + adjustedForGeneration);
+                            maxPointCount = (int) (particleCount / 1.5);
                             Log.i(TAG, "Generating buffer capped at " + maxPointCount);
                             lastGenerationTime = genParticlesData(currentFrames);
                         } else {
+                            Log.i(TAG, "Adjustment phase finished");
                             lastGenerationTime = 0.0;
+                            isAdjustmentPhase = false;
                         }
                     }
 
                     time += deltaTime;
                     checkResize();
                     drawFrame((float) deltaTime);
+                    isFirstFrame = false;
                     Log.i(TAG, "Delta time=" + deltaTime);
                 }
             }
@@ -276,12 +291,17 @@ public class MessageDeletionOverlay extends TextureView {
         private EGLSurface eglSurface;
         private EGLContext eglContext;
 
+        private static final int maxPointSize = AndroidUtilities.dp2(8f) * 2;
         private final int visibleSize = Math.max(1, AndroidUtilities.dp2(1f) * 2);
         private float time = Float.MAX_VALUE;
         private final Random random = new Random();
         private int particleSize = visibleSize;
         private final PointF localPointSize = new PointF(0f, 0f);
-        private int maxPointCount = MAX_POINT_COUNT_CEILING;
+        private int maxPointCount = getMaxPointCountCeiling();
+        private final Object lock = new Object();
+        private double lastGenerationTime = 0.0;
+        private boolean isAdjustmentPhase = false;
+        private boolean isFirstFrame = false;
 
         private int drawProgram;
         private int currentBuffer = 0;
@@ -293,10 +313,8 @@ public class MessageDeletionOverlay extends TextureView {
         private int pointSizeHandle = 0;
         private int localPointSizeHandle = 0;
 
-        private static final int MAX_POINT_COUNT_CEILING = 32768;
         private static final double MIN_DELTA = 1.0 / AndroidUtilities.screenRefreshRate;
         private static final double MAX_DELTA = MIN_DELTA * 2f;
-        private static final int MAX_POINT_SIZE = 50;
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 2;
         private static final int SIZE_TEX_COORD = 2;
@@ -313,6 +331,18 @@ public class MessageDeletionOverlay extends TextureView {
         private static final float MIN_LIFETIME = 0.7f;
         private static final float MAX_LIFETIME = 1.5f;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
+
+        private static int getMaxPointCountCeiling() {
+            switch (SharedConfig.getDevicePerformanceClass()) {
+                case SharedConfig.PERFORMANCE_CLASS_HIGH:
+                    return 32768;
+                case SharedConfig.PERFORMANCE_CLASS_AVERAGE:
+                    return 16384;
+                default:
+                case SharedConfig.PERFORMANCE_CLASS_LOW:
+                    return 8192;
+            }
+        }
 
         private void init() {
             egl = (EGL10) EGLContext.getEGL();
@@ -511,11 +541,11 @@ public class MessageDeletionOverlay extends TextureView {
             return offset + size * S_FLOAT;
         }
 
-        private List<ViewFrame> currentFrames;
+        private List<ViewFrame> currentFrames = new ArrayList<>(0);
         private boolean pollAnimation() {
             AnimationConfig config = animationQueue.poll();
             if (config != null) {
-                maxPointCount = MAX_POINT_COUNT_CEILING;
+                maxPointCount = getMaxPointCountCeiling();
                 currentFrames = config.frames;
                 genParticlesData(currentFrames);
                 Bitmap bitmap = config.bitmap;
@@ -669,7 +699,7 @@ public class MessageDeletionOverlay extends TextureView {
                 for (ViewFrame frame : frames) {
                     count += calculateParticleCountAndSize(frame, size);
                 }
-            } while (count > maxPointCount && size < MAX_POINT_SIZE);
+            } while (count > maxPointCount && size < maxPointSize);
 
             return new Pair<>(count, size);
         }
