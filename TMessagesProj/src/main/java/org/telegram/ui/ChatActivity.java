@@ -23703,6 +23703,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     @Override
     public void onPause() {
         super.onPause();
+        if (messageDeletionOverlay != null) {
+            messageDeletionOverlay.stopAndClear();
+        }
         if (scrimPopupWindow != null) {
             scrimPopupWindow.setPauseNotifications(false);
             closeMenu();

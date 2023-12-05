@@ -59,6 +59,12 @@ public class MessageDeletionOverlay extends TextureView {
         init();
     }
 
+    public void stopAndClear() {
+        if (thread != null) {
+            thread.stopAndClear();
+        }
+    }
+
     private void init() {
         setSurfaceTextureListener(createSurfaceListener());
         setOpaque(false);
@@ -189,6 +195,7 @@ public class MessageDeletionOverlay extends TextureView {
 
     private static class AnimationThread extends Thread {
         private volatile boolean running = true;
+        private volatile boolean shouldStop = false;
         private final ConcurrentLinkedQueue<AnimationConfig> animationQueue = new ConcurrentLinkedQueue<>();
         private final SurfaceTexture surfaceTexture;
         private final Object resizeLock = new Object();
@@ -217,6 +224,10 @@ public class MessageDeletionOverlay extends TextureView {
             }
         }
 
+        public void stopAndClear() {
+            shouldStop = true;
+        }
+
         public void halt() {
             running = false;
         }
@@ -225,7 +236,15 @@ public class MessageDeletionOverlay extends TextureView {
             synchronized (lock) {
                 long lastTime = 0;
                 while (running) {
+                    if (shouldStop) {
+//                        Log.i(TAG, "Paused");
+                        time = Float.MAX_VALUE;
+                        shouldStop = false;
+                    }
+
                     if (time > ANIMATION_DURATION) {
+                        GLES31.glClear(GLES31.GL_COLOR_BUFFER_BIT);
+                        egl.eglSwapBuffers(eglDisplay, eglSurface);
                         while (!hasNewAnimation()) {
                             try {
                                 lock.wait();
@@ -234,7 +253,6 @@ public class MessageDeletionOverlay extends TextureView {
                         }
                     }
                     if (pollAnimation()) {
-                        GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
                         time = 0f;
                         lastGenerationTime = 0.0;
                         isAdjustmentPhase = true;
@@ -259,12 +277,12 @@ public class MessageDeletionOverlay extends TextureView {
                     } else if (deltaTime > MAX_DELTA && isAdjustmentPhase) {
                         double adjustedForGeneration = deltaTime - lastGenerationTime;
                         if (adjustedForGeneration > MAX_DELTA && particleSize < maxPointSize) {
-                            Log.i(TAG, "Adjusted Delta more than max delta:" + adjustedForGeneration);
+//                            Log.i(TAG, "Adjusted Delta more than max delta:" + adjustedForGeneration);
                             maxPointCount = (int) (particleCount / 1.5);
-                            Log.i(TAG, "Generating buffer capped at " + maxPointCount);
+//                            Log.i(TAG, "Generating buffer capped at " + maxPointCount);
                             lastGenerationTime = genParticlesData(currentFrames);
                         } else {
-                            Log.i(TAG, "Adjustment phase finished");
+//                            Log.i(TAG, "Adjustment phase finished");
                             lastGenerationTime = 0.0;
                             isAdjustmentPhase = false;
                         }
@@ -274,7 +292,7 @@ public class MessageDeletionOverlay extends TextureView {
                     checkResize();
                     drawFrame((float) deltaTime);
                     isFirstFrame = false;
-                    Log.i(TAG, "Delta time=" + deltaTime);
+//                    Log.i(TAG, "Delta time=" + deltaTime);
                 }
             }
         }
@@ -325,11 +343,12 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int ATTRIBUTES_PER_VERTEX = SIZE_POSITION + SIZE_TEX_COORD + SIZE_VELOCITY + SIZE_LIFETIME + SIZE_SEED + SIZE_X_SHARE;
         private static final int VERTICES_PER_PARTICLE = 1;
         private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
-        private static final float MAX_SPEED = 3000;
-        private static final float UP_ACCELERATION = 600;
-        private static final float EASE_IN_DURATION = 1.0f;
-        private static final float MIN_LIFETIME = 0.5f;
-        private static final float MAX_LIFETIME = 1.3f;
+        private static final float TIME_SCALE = 1f;
+        private static final float MAX_SPEED = 3000 * TIME_SCALE;
+        private static final float UP_ACCELERATION = 600 * TIME_SCALE;
+        private static final float EASE_IN_DURATION = 1.0f / TIME_SCALE;
+        private static final float MIN_LIFETIME = 0.5f / TIME_SCALE;
+        private static final float MAX_LIFETIME = 1.3f / TIME_SCALE;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
 
         private static int getMaxPointCountCeiling() {
@@ -456,6 +475,7 @@ public class MessageDeletionOverlay extends TextureView {
 
             GLES31.glUseProgram(drawProgram);
 
+            GLES31.glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             textureUniformHandle = GLES31.glGetUniformLocation(drawProgram, "uTexture");
             deltaTimeHandle = GLES31.glGetUniformLocation(drawProgram, "deltaTime");
             timeHandle = GLES31.glGetUniformLocation(drawProgram, "time");
