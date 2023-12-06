@@ -75,12 +75,8 @@ public class MessageDeletionOverlay extends TextureView {
         setSurfaceTextureListener(createSurfaceListener());
         setOpaque(false);
     }
-
-    /*
-     TODO:
-     Draw group background
-     */
     public void launchAnimation(List<ChatMessageCell> cells) {
+        long now = System.currentTimeMillis();
         Bitmap atlas = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
         if (atlas == null) {
             return;
@@ -90,33 +86,25 @@ public class MessageDeletionOverlay extends TextureView {
         getLocationOnScreen(myLocation);
         List<ViewFrame> frames = new ArrayList<>(cells.size());
         for (ChatMessageCell cell : cells) {
-            Bitmap bitmap = getCellBitmap(cell);
-            if (bitmap == null) {
-                continue;
-            }
             int[] relativeLocation = getRelativeLocation(cell, myLocation);
             int x = relativeLocation[0];
             int y = relativeLocation[1];
-            frames.add(new ViewFrame(new Point(x, y), new Point(bitmap.getWidth(), bitmap.getHeight())));
 
-            canvas.drawBitmap(bitmap, x, y, null);
-            bitmap.recycle();
+            drawCell(canvas, cell, x, y);
+            frames.add(new ViewFrame(new Point(x, y), new Point(cell.getWidth(), cell.getHeight())));
         }
         thread.scheduleAnimation(new AnimationConfig(atlas, frames));
+        Log.i(TAG, "Bitmap rendering took " + (System.currentTimeMillis() - now));
     }
 
-    @Nullable
-    private Bitmap getCellBitmap(ChatMessageCell cell) {
-        Bitmap bitmap = Bitmap.createBitmap(cell.getWidth(), cell.getHeight(), Bitmap.Config.ARGB_8888);
-        if (bitmap == null) {
-            return null;
-        }
-        Canvas canvas = new Canvas(bitmap);
+    private void drawCell(Canvas canvas, ChatMessageCell cell, int x, int y) {
+        canvas.save();
+        canvas.translate(x, y);
         if (cell.drawBackgroundInParent()) {
             cell.drawBackgroundInternal(canvas, true);
         }
         cell.draw(canvas);
-        return bitmap;
+        canvas.restore();
     }
 
     private int[] getRelativeLocation(View view, int[] myLocation) {
@@ -347,11 +335,11 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int VERTICES_PER_PARTICLE = 1;
         private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
         private static final float TIME_SCALE = 1f;
-        private static final float MAX_SPEED = 3200 * TIME_SCALE;
-        private static final float UP_ACCELERATION = 600 * TIME_SCALE;
-        private static final float EASE_IN_DURATION = 0.8f / TIME_SCALE;
-        private static final float MIN_LIFETIME = 0.6f / TIME_SCALE;
-        private static final float MAX_LIFETIME = 1.5f / TIME_SCALE;
+        private static final float MAX_SPEED = 2500 * TIME_SCALE;
+        private static final float UP_ACCELERATION = 300 * TIME_SCALE;
+        private static final float EASE_IN_DURATION = 1.2f / TIME_SCALE;
+        private static final float MIN_LIFETIME = 1f / TIME_SCALE;
+        private static final float MAX_LIFETIME = 2f / TIME_SCALE;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
 
         private static int getMaxPointCountCeiling() {
