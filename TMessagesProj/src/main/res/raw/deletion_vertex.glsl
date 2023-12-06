@@ -27,19 +27,19 @@ uniform float time;
 uniform float pointSize;
 uniform float visibleSize;
 
-float rand(vec2 n) {
-    return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 4375.5453);
+float rand(float n) {
+    return fract(inSeed * n);
 }
 
 vec2 initVelocity() {
-    float direction = rand(vec2(inSeed * 2.31, inSeed + 14.145)) * (3.14159265 * 2.0);
-    float velocityValue = (0.1 + rand(vec2(inSeed / 61.2, inSeed - 1.22)) * (0.2 - 0.1));
+    float direction = rand(11532.324) * (3.14159265 * 2.0);
+    float velocityValue = (0.1 + rand(662.551) * (0.2 - 0.1));
     vec2 velocity = vec2(velocityValue * maxSpeed.x, velocityValue * maxSpeed.y);
     return vec2(cos(direction) * velocity.x, sin(direction) * velocity.y);
 }
 
 float initLifetime() {
-    return minLifetime + rand(vec2(inSeed - 1.2, inSeed * 153.5)) * (maxLifetime - minLifetime);
+    return minLifetime + rand(5423.2354) * (maxLifetime - minLifetime);
 }
 
 float calculateEaseInPhase() {
