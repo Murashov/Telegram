@@ -220,19 +220,17 @@ public class MessageDeletionOverlay extends TextureView {
             running = false;
         }
 
-        private static final int MAX_ADJUSTMENT_FRAMES = 10;
-        private int adjustmentFrameCount = 0;
 
-        private void endAdjustmentPhase(long animationStartTime) {
-            lastGenerationTime = 0.0;
-            isAdjustmentPhase = false;
-            Log.i(TAG, "Adjustment phase finished in " + (System.currentTimeMillis() - animationStartTime));
-        }
 
         private void loop() {
             synchronized (lock) {
                 long lastTime = 0;
                 long animationStartTime = 0;
+                long lastAdjustmentTime = 0;
+                double lastGenerationDuration = 0.0;
+                boolean isAdjustmentPhase = false;
+                int adjustmentFrameCount = 0;
+
                 while (running) {
                     if (shouldStop) {
                         Log.i(TAG, "Stopped");
@@ -254,10 +252,11 @@ public class MessageDeletionOverlay extends TextureView {
                         Log.i(TAG, "New animation scheduled");
                         time = 0f;
                         isAdjustmentPhase = true;
-                        lastGenerationTime = 0.0;
+                        lastGenerationDuration = 0.0;
                         adjustmentFrameCount = 0;
                         lastTime = System.nanoTime();
                         animationStartTime = System.currentTimeMillis();
+                        lastAdjustmentTime = animationStartTime;
                     }
 
                     final long now = System.nanoTime();
@@ -275,20 +274,23 @@ public class MessageDeletionOverlay extends TextureView {
                         }
                         deltaTime = MIN_DELTA;
                     } else if (isAdjustmentPhase) {
-                        double adjustedForGeneration = deltaTime - lastGenerationTime;
+                        double adjustedForGeneration = deltaTime - lastGenerationDuration;
                         if (adjustedForGeneration > MAX_DELTA && particleSize < maxPointSize) {
                             Log.i(TAG, "Adjusted delta more than max delta:" + adjustedForGeneration);
                             maxPointCount = (int) (particleCount / 1.5);
                             Log.i(TAG, "Generating buffer capped at " + maxPointCount);
-                            lastGenerationTime = genParticlesData(currentFrames);
-                            Log.i(TAG, "Generation took " + lastGenerationTime);
+                            lastGenerationDuration = genParticlesData(currentFrames);
+                            Log.i(TAG, "Generation took " + lastGenerationDuration);
                             adjustmentFrameCount = 0;
                             time = 0f;
+                            lastAdjustmentTime = System.currentTimeMillis();
                         }
                     }
 
                     if (isAdjustmentPhase && adjustmentFrameCount++ > MAX_ADJUSTMENT_FRAMES) {
-                        endAdjustmentPhase(animationStartTime);
+                        lastGenerationDuration = 0.0;
+                        isAdjustmentPhase = false;
+                        Log.i(TAG, "Adjustment phase finished in " + (lastAdjustmentTime - animationStartTime));
                     }
 
                     time += deltaTime;
@@ -318,9 +320,6 @@ public class MessageDeletionOverlay extends TextureView {
         private final PointF localPointSize = new PointF(0f, 0f);
         private int maxPointCount = getMaxPointCountCeiling();
         private final Object lock = new Object();
-        private double lastGenerationTime = 0.0;
-        private boolean isAdjustmentPhase = false;
-        private boolean isFirstFrame = false;
 
         private int drawProgram;
         private int currentBuffer = 0;
@@ -336,6 +335,7 @@ public class MessageDeletionOverlay extends TextureView {
 
         private static final double MIN_DELTA = 1.0 / AndroidUtilities.screenRefreshRate;
         private static final double MAX_DELTA = MIN_DELTA * 2f;
+        private static final int MAX_ADJUSTMENT_FRAMES = 10;
         private static final int S_FLOAT = 4;
         private static final int SIZE_POSITION = 2;
         private static final int SIZE_TEX_COORD = 2;
@@ -350,8 +350,8 @@ public class MessageDeletionOverlay extends TextureView {
         private static final float MAX_SPEED = 3200 * TIME_SCALE;
         private static final float UP_ACCELERATION = 600 * TIME_SCALE;
         private static final float EASE_IN_DURATION = 0.8f / TIME_SCALE;
-        private static final float MIN_LIFETIME = 0.4f / TIME_SCALE;
-        private static final float MAX_LIFETIME = 1.1f / TIME_SCALE;
+        private static final float MIN_LIFETIME = 0.6f / TIME_SCALE;
+        private static final float MAX_LIFETIME = 1.5f / TIME_SCALE;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
 
         private static int getMaxPointCountCeiling() {
