@@ -220,9 +220,19 @@ public class MessageDeletionOverlay extends TextureView {
             running = false;
         }
 
+        private static final int MAX_ADJUSTMENT_FRAMES = 10;
+        private int adjustmentFrameCount = 0;
+
+        private void endAdjustmentPhase(long animationStartTime) {
+            lastGenerationTime = 0.0;
+            isAdjustmentPhase = false;
+            Log.i(TAG, "Adjustment phase finished in " + (System.currentTimeMillis() - animationStartTime));
+        }
+
         private void loop() {
             synchronized (lock) {
                 long lastTime = 0;
+                long animationStartTime = 0;
                 while (running) {
                     if (shouldStop) {
                         Log.i(TAG, "Stopped");
@@ -243,10 +253,11 @@ public class MessageDeletionOverlay extends TextureView {
                     if (pollAnimation()) {
                         Log.i(TAG, "New animation scheduled");
                         time = 0f;
-                        lastGenerationTime = 0.0;
                         isAdjustmentPhase = true;
-                        isFirstFrame = true;
+                        lastGenerationTime = 0.0;
+                        adjustmentFrameCount = 0;
                         lastTime = System.nanoTime();
+                        animationStartTime = System.currentTimeMillis();
                     }
 
                     final long now = System.nanoTime();
@@ -254,7 +265,7 @@ public class MessageDeletionOverlay extends TextureView {
                     lastTime = now;
 //                    Log.i(TAG, "Delta time=" + deltaTime);
 
-                    if (deltaTime < MIN_DELTA && !isFirstFrame) {
+                    if (deltaTime < MIN_DELTA) {
                         double wait = MIN_DELTA - deltaTime;
                         long milli = (long) (wait * 1000L);
                         int nano = (int) ((wait - milli / 1000.) * 1_000_000_000);
@@ -263,24 +274,26 @@ public class MessageDeletionOverlay extends TextureView {
                         } catch (InterruptedException ignore) {
                         }
                         deltaTime = MIN_DELTA;
-                    } else if (deltaTime > MAX_DELTA && isAdjustmentPhase) {
+                    } else if (isAdjustmentPhase) {
                         double adjustedForGeneration = deltaTime - lastGenerationTime;
                         if (adjustedForGeneration > MAX_DELTA && particleSize < maxPointSize) {
-                            Log.i(TAG, "Adjusted Delta more than max delta:" + adjustedForGeneration);
+                            Log.i(TAG, "Adjusted delta more than max delta:" + adjustedForGeneration);
                             maxPointCount = (int) (particleCount / 1.5);
                             Log.i(TAG, "Generating buffer capped at " + maxPointCount);
                             lastGenerationTime = genParticlesData(currentFrames);
-                        } else {
-                            Log.i(TAG, "Adjustment phase finished");
-                            lastGenerationTime = 0.0;
-                            isAdjustmentPhase = false;
+                            Log.i(TAG, "Generation took " + lastGenerationTime);
+                            adjustmentFrameCount = 0;
+                            time = 0f;
                         }
+                    }
+
+                    if (isAdjustmentPhase && adjustmentFrameCount++ > MAX_ADJUSTMENT_FRAMES) {
+                        endAdjustmentPhase(animationStartTime);
                     }
 
                     time += deltaTime;
                     checkResize();
                     drawFrame((float) deltaTime);
-                    isFirstFrame = false;
                 }
             }
         }
@@ -334,11 +347,11 @@ public class MessageDeletionOverlay extends TextureView {
         private static final int VERTICES_PER_PARTICLE = 1;
         private static final int STRIDE = ATTRIBUTES_PER_VERTEX * S_FLOAT; // Change if non-float attrs
         private static final float TIME_SCALE = 1f;
-        private static final float MAX_SPEED = 3000 * TIME_SCALE;
+        private static final float MAX_SPEED = 3200 * TIME_SCALE;
         private static final float UP_ACCELERATION = 600 * TIME_SCALE;
-        private static final float EASE_IN_DURATION = 1.0f / TIME_SCALE;
-        private static final float MIN_LIFETIME = 0.5f / TIME_SCALE;
-        private static final float MAX_LIFETIME = 1.3f / TIME_SCALE;
+        private static final float EASE_IN_DURATION = 0.8f / TIME_SCALE;
+        private static final float MIN_LIFETIME = 0.4f / TIME_SCALE;
+        private static final float MAX_LIFETIME = 1.1f / TIME_SCALE;
         private static final float ANIMATION_DURATION = EASE_IN_DURATION + MAX_LIFETIME;
 
         private static int getMaxPointCountCeiling() {
