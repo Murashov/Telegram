@@ -208,8 +208,6 @@ public class MessageDeletionOverlay extends TextureView {
             running = false;
         }
 
-
-
         private void loop() {
             synchronized (lock) {
                 long lastTime = 0;
@@ -265,7 +263,7 @@ public class MessageDeletionOverlay extends TextureView {
                         double adjustedForGeneration = deltaTime - lastGenerationDuration;
                         if (adjustedForGeneration > MAX_DELTA && particleSize < maxPointSize) {
                             Log.i(TAG, "Adjusted delta more than max delta:" + adjustedForGeneration);
-                            maxPointCount = (int) (particleCount / 1.5);
+                            maxPointCount = (int) (particleCount / ADJUSTMENT_FACTOR);
                             Log.i(TAG, "Generating buffer capped at " + maxPointCount);
                             lastGenerationDuration = genParticlesData(currentFrames);
                             Log.i(TAG, "Generation took " + lastGenerationDuration);
@@ -321,6 +319,7 @@ public class MessageDeletionOverlay extends TextureView {
         private int maxSpeedHandle = 0;
         private int accelerationHandle = 0;
 
+        private static final float ADJUSTMENT_FACTOR = 1.5f;
         private static final double MIN_DELTA = 1.0 / AndroidUtilities.screenRefreshRate;
         private static final double MAX_DELTA = MIN_DELTA * 2f;
         private static final int MAX_ADJUSTMENT_FRAMES = 10;
@@ -551,7 +550,7 @@ public class MessageDeletionOverlay extends TextureView {
         private boolean pollAnimation() {
             AnimationConfig config = animationQueue.poll();
             if (config != null) {
-                maxPointCount = getMaxPointCountCeiling();
+                maxPointCount = Math.min((int) (maxPointCount * ADJUSTMENT_FACTOR), getMaxPointCountCeiling());
                 currentFrames = config.frames;
                 genParticlesData(currentFrames);
                 Bitmap bitmap = config.bitmap;
